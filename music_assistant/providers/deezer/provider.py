@@ -14,8 +14,11 @@ from collections.abc import AsyncGenerator, Sequence
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from aiohttp import ClientError
 from deezer_python_gql import DeezerGQLClient, GraphQLClientAuthError, GraphQLClientError
-from music_assistant_models.enums import MediaType, ProviderFeature
+from deezer_python_gql.generated.enums import DiscoveryTuner, DiscoveryTunerInput
+from music_assistant_models.config_entries import ConfigEntry
+from music_assistant_models.enums import ConfigEntryType, MediaType, ProviderFeature
 from music_assistant_models.errors import LoginFailed
 
 from music_assistant.constants import CONF_ENTRY_UNOFFICIAL_PROVIDER
@@ -24,7 +27,12 @@ from music_assistant.models.music_provider import MusicProvider
 from music_assistant.models.recommendation_payload import RecommendationPayloadMixin
 
 from .browse import DeezerBrowseManager
-from .constants import DECRYPT_KEY_ERROR, DECRYPT_KEY_LENGTH
+from .constants import (
+    ACTION_FLOW_TUNER_DEFAULT,
+    ACTION_FLOW_TUNER_DISCOVERY,
+    DECRYPT_KEY_ERROR,
+    DECRYPT_KEY_LENGTH,
+)
 from .gw_client import (
     DeezerGWAuthError,
     DeezerGWError,
@@ -36,7 +44,7 @@ from .rest_client import DeezerRESTClient
 from .streaming import DeezerStreamingManager
 
 if TYPE_CHECKING:
-    from music_assistant_models.config_entries import ConfigEntry
+    from music_assistant_models.config_entries import ConfigActionResult
     from music_assistant_models.enums import ExternalID
     from music_assistant_models.media_items import (
         Album,
@@ -116,7 +124,43 @@ class DeezerProvider(RecommendationPayloadMixin, MusicProvider):
 
     async def get_config_entries(self) -> tuple[ConfigEntry, ...]:
         """Return Config entries to configure this provider."""
-        return (CONF_ENTRY_UNOFFICIAL_PROVIDER,)
+        # also resolved on load, before the client exists
+        if not self.available:
+            return (CONF_ENTRY_UNOFFICIAL_PROVIDER,)
+        # the Flow setting belongs to the Deezer account (the Deezer app changes it too),
+        # so it is read fresh every time and never stored here
+        try:
+            me = await self.gql_client.get_flow_tuner()
+        except (ClientError, GraphQLClientError, TimeoutError) as err:
+            self.logger.debug("Could not read the Flow discovery setting: %s", err)
+            return (CONF_ENTRY_UNOFFICIAL_PROVIDER,)
+        if me is None:
+            return (CONF_ENTRY_UNOFFICIAL_PROVIDER,)
+        discovery = me.flow_tuner.discovery_tuner == DiscoveryTuner.DISCOVERY
+        state = "flow_tuner_state_discovery" if discovery else "flow_tuner_state_default"
+        action = ACTION_FLOW_TUNER_DEFAULT if discovery else ACTION_FLOW_TUNER_DISCOVERY
+        return (
+            CONF_ENTRY_UNOFFICIAL_PROVIDER,
+            ConfigEntry(key=state, type=ConfigEntryType.LABEL),
+            ConfigEntry(key=action, type=ConfigEntryType.ACTION, action=action),
+        )
+
+    async def handle_config_action(
+        self, action: str
+    ) -> tuple[ConfigEntry, ...] | ConfigActionResult | None:
+        """
+        Switch the Flow discovery setting of the Deezer account.
+
+        :param action: The action key of the pressed button.
+        """
+        if action not in (ACTION_FLOW_TUNER_DEFAULT, ACTION_FLOW_TUNER_DISCOVERY):
+            return await super().handle_config_action(action)
+        await self.gql_client.set_flow_discovery_tuner(
+            discovery_tuner=DiscoveryTunerInput.DISCOVERY
+            if action == ACTION_FLOW_TUNER_DISCOVERY
+            else DiscoveryTunerInput.DEFAULT
+        )
+        return await self.get_config_entries()
 
     async def handle_async_init(self) -> None:
         """Handle async init of the Deezer provider."""
