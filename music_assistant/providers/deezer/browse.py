@@ -10,6 +10,8 @@ from __future__ import annotations
 from collections.abc import Callable, Coroutine, Sequence
 from typing import TYPE_CHECKING
 
+from aiohttp import ClientError
+from deezer_python_gql import GraphQLClientHttpError
 from deezer_python_gql.generated.enums import (
     MusicTogetherRefreshSuggestedTracklistMoodInput,
     MusicTogetherSuggestedTracklistMoodInput,
@@ -1103,9 +1105,31 @@ class DeezerBrowseManager:
         cache_key = f"_get_regular_playlist_tracks.{prov_playlist_id}"
         await self.mass.cache.delete(key=cache_key, provider=self.instance_id)
 
-    @use_cache(3600 * 3)
     async def _get_regular_playlist_tracks(self, prov_playlist_id: str) -> list[Track]:
-        """Get tracks for regular Deezer playlists (cached)."""
+        """Get tracks for regular Deezer playlists, cached until the playlist changes."""
+        cache_key = f"_get_regular_playlist_tracks.{prov_playlist_id}"
+        # one track is enough to read when the playlist last changed
+        try:
+            result = await self.provider.gql_client.get_playlist(
+                playlist_id=prov_playlist_id, tracks_first=1
+            )
+        except (ClientError, GraphQLClientHttpError, TimeoutError) as err:
+            # the last known tracks are better than none while Deezer does not answer
+            cached: list[Track] | None = await self.mass.cache.get(
+                cache_key, provider=self.instance_id, base_class=Track
+            )
+            if not cached:
+                raise
+            self.logger.debug("Using cached tracks of playlist %s: %s", prov_playlist_id, err)
+            return cached
+        if result is None:
+            return []
+        checksum = result.last_modification_date
+        cached = await self.mass.cache.get(
+            cache_key, provider=self.instance_id, checksum=checksum, base_class=Track
+        )
+        if cached:
+            return cached
         result = await self.provider.gql_client.get_playlist(playlist_id=prov_playlist_id)
         if result is None:
             return []
@@ -1127,6 +1151,9 @@ class DeezerBrowseManager:
             # when the track was added to the playlist, not to the library
             track.date_added = parse_date(edge.added_at)
             tracks.append(track)
+        await self.mass.cache.set(
+            cache_key, tracks, expiration=3600 * 3, provider=self.instance_id, checksum=checksum
+        )
         return tracks
 
     @use_cache(3600)
