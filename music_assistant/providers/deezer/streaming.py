@@ -26,7 +26,7 @@ from music_assistant.helpers.app_vars import app_var
 from music_assistant.helpers.datetime import utc_timestamp
 
 from .constants import DECRYPT_KEY_ERROR, DECRYPT_KEY_LENGTH
-from .gw_client import DeezerGWError
+from .gw_client import DeezerGWAuthError, DeezerGWError
 from .helpers import (
     fetch_all_audiobook_chapter_edges,
     fetch_all_bookmarks,
@@ -467,6 +467,9 @@ def _raise_stream_error(err: DeezerGWError, item_id: str, label: str) -> NoRetur
     :param item_id: The provider-specific item ID, used in the error message.
     :param label: Human-readable item kind (e.g. "Track", "Audiobook").
     """
+    if isinstance(err, DeezerGWAuthError):
+        # the ARL stopped working, the provider unloads itself for a new one
+        raise err
     api_errors = err.args[1] if len(err.args) > 1 else []
     # Code 2002 means the item is genuinely unavailable (region/plan rights), so it
     # maps to MediaNotFoundError. Any other GW failure is treated as a transient
