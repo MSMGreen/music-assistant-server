@@ -11,6 +11,7 @@ import re
 from collections.abc import Sequence
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol
+from urllib.parse import urlparse
 
 from deezer_python_gql.generated.enums import AlbumType as DeezerAlbumType
 from deezer_python_gql.generated.enums import AudiobookContributorRoles
@@ -28,6 +29,7 @@ from music_assistant_models.enums import (
     AlbumType,
     ExternalID,
     ImageType,
+    LinkType,
     MediaType,
 )
 from music_assistant_models.media_items import (
@@ -37,6 +39,7 @@ from music_assistant_models.media_items import (
     ItemMapping,
     MediaItemChapter,
     MediaItemImage,
+    MediaItemLink,
     MediaItemMetadata,
     MediaItemType,
     Playlist,
@@ -74,6 +77,7 @@ if TYPE_CHECKING:
         PodcastFields,
         TrackFields,
     )
+    from deezer_python_gql.generated.get_artist import GetArtistArtistSocial
     from deezer_python_gql.generated.get_audiobook import (
         GetAudiobookAudiobookChaptersEdges,
     )
@@ -119,15 +123,17 @@ class _HasUrl(Protocol):
     def url(self) -> object: ...
 
 
-def _cover_image(provider: DeezerProvider, cover: _CoverLike | None) -> MediaItemImage | None:
+def _cover_image(
+    provider: DeezerProvider, cover: _CoverLike | None, image_type: ImageType = ImageType.THUMB
+) -> MediaItemImage | None:
     """
-    Create a THUMB image from a GQL cover/picture object with a `.urls` list.
+    Create an image (THUMB by default) from a GQL cover/picture object with a `.urls` list.
 
     Returns None when the cover is absent or has no URLs.
     """
     if cover and cover.urls:
         return MediaItemImage(
-            type=ImageType.THUMB,
+            type=image_type,
             path=cover.urls[0],
             provider=provider.instance_id,
             remotely_accessible=True,
@@ -289,7 +295,12 @@ def parse_artist(
     images: UniqueList[MediaItemImage] = UniqueList()
     if img := _cover_image(provider, artist.picture):
         images.append(img)
+    # only the artist details carry the hero picture and the social links
+    if img := _cover_image(provider, getattr(artist, "hero_picture", None), ImageType.FANART):
+        images.append(img)
     metadata = MediaItemMetadata(images=images) if images else MediaItemMetadata()
+    if social := getattr(artist, "social", None):
+        metadata.links = _social_links(social)
     if bio := getattr(artist, "bio", None):
         metadata.description = re.sub(r"<[^>]+>", "", bio.full).strip()
     if (fans_count := getattr(artist, "fans_count", None)) is not None:
@@ -305,6 +316,21 @@ def parse_artist(
     if getattr(artist, "is_favorite", False):
         item.favorite = True
     return item
+
+
+def _social_links(social: GetArtistArtistSocial) -> set[MediaItemLink] | None:
+    """Map an artist's social fields to links, skipping empty ones like "http://"."""
+    links: set[MediaItemLink] = set()
+    for link_type, value in (
+        (LinkType.WEBSITE, social.website),
+        (LinkType.TWITTER, social.twitter),
+        (LinkType.FACEBOOK, social.facebook),
+        (LinkType.INSTAGRAM, social.instagram),
+    ):
+        url = f"https://{value}" if value and "://" not in value else value
+        if url and urlparse(url).hostname:
+            links.add(MediaItemLink(type=link_type, url=url))
+    return links or None
 
 
 def parse_album(
