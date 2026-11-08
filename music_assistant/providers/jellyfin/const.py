@@ -10,6 +10,7 @@ DOMAIN: Final = "jellyfin"
 
 COLLECTION_TYPE_MUSIC: Final = "music"
 COLLECTION_TYPE_PLAYLISTS: Final = "playlists"
+COLLECTION_TYPE_BOOKS: Final = "books"
 
 ITEM_KEY_COLLECTION_TYPE: Final = "CollectionType"
 ITEM_KEY_ID: Final = "Id"
@@ -31,6 +32,9 @@ ITEM_KEY_MUSICBRAINZ_ARTIST: Final = "MusicBrainzArtist"
 ITEM_KEY_MUSICBRAINZ_ALBUM: Final = "MusicBrainzAlbum"
 ITEM_KEY_MUSICBRAINZ_TRACK: Final = "MusicBrainzTrack"
 ITEM_KEY_SORT_NAME: Final = "SortName"
+ITEM_KEY_CHAPTERS: Final = "Chapters"
+ITEM_KEY_PARENT_ID: Final = "ParentId"
+ITEM_KEY_PEOPLE: Final = "People"
 ITEM_KEY_ALBUM_ARTIST: Final = "AlbumArtist"
 ITEM_KEY_ALBUM_ARTISTS: Final = "AlbumArtists"
 ITEM_KEY_ALBUM: Final = "Album"
@@ -42,6 +46,20 @@ ITEM_KEY_RUNTIME_TICKS: Final = "RunTimeTicks"
 ITEM_KEY_USER_DATA: Final = "UserData"
 
 USER_DATA_KEY_IS_FAVORITE: Final = "IsFavorite"
+USER_DATA_KEY_LAST_PLAYED: Final = "LastPlayedDate"
+USER_DATA_KEY_PLAYED: Final = "Played"
+USER_DATA_KEY_POSITION_TICKS: Final = "PlaybackPositionTicks"
+
+CHAPTER_KEY_NAME: Final = "Name"
+CHAPTER_KEY_START_TICKS: Final = "StartPositionTicks"
+
+PERSON_KEY_NAME: Final = "Name"
+PERSON_KEY_TYPE: Final = "Type"
+PERSON_TYPE_AUTHOR: Final = "Author"
+PERSON_TYPE_NARRATOR: Final = "Narrator"
+
+TICKS_PER_SECOND: Final = 10_000_000
+TICKS_PER_MS: Final = 10_000
 
 MEDIA_TYPE_AUDIO: Final = "Audio"
 
@@ -63,6 +81,16 @@ TRACK_FIELDS: Final = [
     ItemFields.SortName,
     ItemFields.MediaSources,
     ItemFields.MediaStreams,
+]
+
+AUDIOBOOK_FIELDS: Final = [
+    ItemFields.Chapters,
+    ItemFields.MediaSources,
+    ItemFields.MediaStreams,
+    ItemFields.People,
+    ItemFields.Overview,
+    ItemFields.SortName,
+    ItemFields.ProviderIds,
 ]
 
 USER_APP_NAME: Final = "Music Assistant"

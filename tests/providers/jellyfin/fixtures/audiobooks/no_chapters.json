@@ -1,0 +1,264 @@
+{
+  "Name": "A Book Without Chapters",
+  "ServerId": "90473833b7f44d0ba09637264e7b4e81",
+  "Id": "00000000000000000000000000000b02",
+  "DateCreated": "2026-10-12T09:12:22.0000000Z",
+  "HasLyrics": false,
+  "SortName": "A Book Without Chapters",
+  "PremiereDate": "2025-03-11T00:00:00.0000000Z",
+  "MediaSources": [
+    {
+      "Protocol": "File",
+      "Id": "c022338cd4fa4f51de8ae471c7e978d8",
+      "Path": "/mnt/media/Media/Books/Audiobooks/James Hunter/Discount Dans Backroom Bargains/01 - Discount Dan/Discount Dan .m4b",
+      "Type": "Default",
+      "Container": "m4b",
+      "Size": 883283912,
+      "Name": "Discount Dan ",
+      "IsRemote": false,
+      "ETag": "a6f439139b5739bd95c122d4d236f01a",
+      "ReadAtNativeFramerate": false,
+      "IgnoreDts": false,
+      "IgnoreIndex": false,
+      "GenPtsInput": false,
+      "SupportsTranscoding": true,
+      "SupportsDirectStream": true,
+      "SupportsDirectPlay": true,
+      "IsInfiniteStream": false,
+      "UseMostCompatibleTranscodingProfile": false,
+      "RequiresOpening": false,
+      "RequiresClosing": false,
+      "RequiresLooping": false,
+      "SupportsProbing": true,
+      "MediaStreams": [
+        {
+          "Codec": "aac",
+          "Language": "eng",
+          "TimeBase": "1/44100",
+          "Title": "\u0019Apple Sound Media Handler",
+          "VideoRange": "Unknown",
+          "VideoRangeType": "Unknown",
+          "AudioSpatialFormat": "None",
+          "LocalizedDefault": "Default",
+          "LocalizedExternal": "External",
+          "LocalizedLanguage": "English",
+          "LocalizedOriginal": "Original",
+          "DisplayTitle": "\u0019Apple Sound Media Handler - English - AAC - Stereo - Default",
+          "IsInterlaced": false,
+          "ChannelLayout": "stereo",
+          "BitRate": 125588,
+          "Channels": 2,
+          "SampleRate": 44100,
+          "IsDefault": true,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsOriginal": false,
+          "Profile": "LC",
+          "Type": "Audio",
+          "Index": 0,
+          "IsExternal": false,
+          "IsTextSubtitleStream": false,
+          "SupportsExternalStream": false
+        },
+        {
+          "Codec": "bin_data",
+          "Language": "eng",
+          "TimeBase": "1/1000",
+          "VideoRange": "Unknown",
+          "VideoRangeType": "Unknown",
+          "AudioSpatialFormat": "None",
+          "IsInterlaced": false,
+          "IsDefault": false,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsOriginal": false,
+          "Type": "Data",
+          "Index": 1,
+          "IsExternal": false,
+          "IsTextSubtitleStream": false,
+          "SupportsExternalStream": false
+        },
+        {
+          "Codec": "mjpeg",
+          "ColorSpace": "bt470bg",
+          "TimeBase": "1/90000",
+          "VideoRange": "Unknown",
+          "VideoRangeType": "Unknown",
+          "AudioSpatialFormat": "None",
+          "IsInterlaced": false,
+          "BitDepth": 8,
+          "IsDefault": false,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsOriginal": false,
+          "Height": 600,
+          "Width": 600,
+          "RealFrameRate": 90000,
+          "ReferenceFrameRate": 90000,
+          "Profile": "Baseline",
+          "Type": "EmbeddedImage",
+          "AspectRatio": "1:1",
+          "Index": 2,
+          "IsExternal": false,
+          "IsTextSubtitleStream": false,
+          "SupportsExternalStream": false,
+          "PixelFormat": "yuvj420p",
+          "Level": -99,
+          "IsAnamorphic": false
+        }
+      ],
+      "MediaAttachments": [],
+      "Formats": [],
+      "Bitrate": 126980,
+      "RequiredHttpHeaders": {},
+      "TranscodingSubProtocol": "http",
+      "DefaultAudioStreamIndex": 0,
+      "HasSegments": false
+    }
+  ],
+  "Path": "/mnt/media/Media/Books/Audiobooks/James Hunter/Discount Dans Backroom Bargains/01 - Discount Dan/Discount Dan .m4b",
+  "ChannelId": null,
+  "Overview": "<p><b>Noclip in, no way out ...</b></p> <p>All Dan wants is to find a way home. He'd settle for a beer, a bite to eat, and a place to sleep off his hangover.</p> <p>But, in an endless, ever-changing dungeon cobbled together from twisted carnivals, abandoned shopping malls, janky laundromats, and condemned insane asylums, getting a bit of shut-eye is harder than it sounds.</p> <p>Dan has accidentally \"Noclipped\" into the Backrooms—a bizarro, extra-dimensional Alice-in-Wonderland world, overrun with horrific nightmare creatures known as the Dwellers. No one ever gets out. Hell, forget about leaving, if Dan wants to survive the week, he's going to need to harness the strange game-like magic of the Backrooms, make some very sketchy allies, and carve out a little safe haven to call his own.</p> <p>And he's going to need to do it fast because Dan is being hunted. The Flayed Monarch of the 999th floor has marked him for death and no one walks away from the Skinless Court with their hide intact ...</p> <p>“The book is a f***ing delight. I enjoyed the absolute hell out of it and think it's an excellent use of pop culture to make something fun and horrific and awesome.” (Eric Ugland, author of the Good Guys and Bad Guys series)</p> <p>“Buckle up, buttercup! James Hunter takes you on a balls-to-the-wall adventure that's as insane as it is awesome.” (Jez Cajiao, author of the Arise and Rise of Mankind series)</p>",
+  "Genres": [
+    "Science Fiction & Fantasy:Fantasy"
+  ],
+  "ProductionYear": 2025,
+  "IndexNumber": 1,
+  "ProviderIds": {},
+  "IsFolder": false,
+  "ParentId": "book-parent-2",
+  "Type": "AudioBook",
+  "People": [
+    {
+      "Name": "James Hunter",
+      "Id": "67e8b9efd7f53db8249412040aa184be",
+      "Role": "",
+      "Type": "Author"
+    },
+    {
+      "Name": "Steve Campbell",
+      "Id": "26ce3b6c47d7300fb7d5723f30e2e1c8",
+      "Role": "",
+      "Type": "Narrator"
+    }
+  ],
+  "GenreItems": [
+    {
+      "Name": "Science Fiction & Fantasy:Fantasy",
+      "Id": "3269c76e3682c31787a1e3cfc93f15c1"
+    }
+  ],
+  "UserData": {
+    "PlaybackPositionTicks": 0,
+    "PlayCount": 0,
+    "IsFavorite": false,
+    "Played": false,
+    "Key": "James Hunter-Discount Dan-0001Discount Dan - Discount Dan’s Backroom Bargains, Book 1",
+    "ItemId": "00000000000000000000000000000b02"
+  },
+  "Artists": [
+    "James Hunter"
+  ],
+  "ArtistItems": [
+    {
+      "Name": "James Hunter",
+      "Id": "48570f2ed89e2649e64704e68abfdc19"
+    }
+  ],
+  "Album": "Discount Dan",
+  "AlbumArtist": "James Hunter",
+  "AlbumArtists": [
+    {
+      "Name": "James Hunter",
+      "Id": "48570f2ed89e2649e64704e68abfdc19"
+    }
+  ],
+  "MediaStreams": [
+    {
+      "Codec": "aac",
+      "Language": "eng",
+      "TimeBase": "1/44100",
+      "Title": "\u0019Apple Sound Media Handler",
+      "VideoRange": "Unknown",
+      "VideoRangeType": "Unknown",
+      "AudioSpatialFormat": "None",
+      "LocalizedDefault": "Default",
+      "LocalizedExternal": "External",
+      "LocalizedLanguage": "English",
+      "LocalizedOriginal": "Original",
+      "DisplayTitle": "\u0019Apple Sound Media Handler - English - AAC - Stereo - Default",
+      "IsInterlaced": false,
+      "ChannelLayout": "stereo",
+      "BitRate": 125588,
+      "Channels": 2,
+      "SampleRate": 44100,
+      "IsDefault": true,
+      "IsForced": false,
+      "IsHearingImpaired": false,
+      "IsOriginal": false,
+      "Profile": "LC",
+      "Type": "Audio",
+      "Index": 0,
+      "IsExternal": false,
+      "IsTextSubtitleStream": false,
+      "SupportsExternalStream": false
+    },
+    {
+      "Codec": "bin_data",
+      "Language": "eng",
+      "TimeBase": "1/1000",
+      "VideoRange": "Unknown",
+      "VideoRangeType": "Unknown",
+      "AudioSpatialFormat": "None",
+      "IsInterlaced": false,
+      "IsDefault": false,
+      "IsForced": false,
+      "IsHearingImpaired": false,
+      "IsOriginal": false,
+      "Type": "Data",
+      "Index": 1,
+      "IsExternal": false,
+      "IsTextSubtitleStream": false,
+      "SupportsExternalStream": false
+    },
+    {
+      "Codec": "mjpeg",
+      "ColorSpace": "bt470bg",
+      "TimeBase": "1/90000",
+      "VideoRange": "Unknown",
+      "VideoRangeType": "Unknown",
+      "AudioSpatialFormat": "None",
+      "IsInterlaced": false,
+      "BitDepth": 8,
+      "IsDefault": false,
+      "IsForced": false,
+      "IsHearingImpaired": false,
+      "IsOriginal": false,
+      "Height": 600,
+      "Width": 600,
+      "RealFrameRate": 90000,
+      "ReferenceFrameRate": 90000,
+      "Profile": "Baseline",
+      "Type": "EmbeddedImage",
+      "AspectRatio": "1:1",
+      "Index": 2,
+      "IsExternal": false,
+      "IsTextSubtitleStream": false,
+      "SupportsExternalStream": false,
+      "PixelFormat": "yuvj420p",
+      "Level": -99,
+      "IsAnamorphic": false
+    }
+  ],
+  "ImageTags": {
+    "Primary": "ca63e87a205774d3013c6578d7b9cf48"
+  },
+  "BackdropImageTags": [],
+  "ImageBlurHashes": {
+    "Primary": {
+      "ca63e87a205774d3013c6578d7b9cf48": "eLEolA4:H;t.I[0rxmv|OHxsEdnlW@xnVt=;s:OsMzxT9HozXAxTaO"
+    }
+  },
+  "LocationType": "FileSystem",
+  "MediaType": "Audio"
+}

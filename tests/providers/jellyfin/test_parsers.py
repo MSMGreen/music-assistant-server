@@ -1,5 +1,6 @@
 """Test we can parse Jellyfin models into Music Assistant models."""
 
+import json
 import logging
 import pathlib
 from collections.abc import AsyncGenerator
@@ -25,6 +26,7 @@ from music_assistant.providers.jellyfin.parsers import (
     audio_format,
     parse_album,
     parse_artist,
+    parse_audiobook,
     parse_track,
 )
 
@@ -161,3 +163,47 @@ def test_audio_format_wav_container_not_treated_as_raw_pcm() -> None:
     assert result.sample_rate == 48000
     assert result.bit_depth == 24
     assert result.channels == 2
+
+
+AUDIOBOOK_FIXTURES = FIXTURES_DIR / "audiobooks"
+
+
+async def _load_raw(path: pathlib.Path) -> Any:
+    # raw JSON: audiobooks are fetched raw, aiojellyfin's decoders would lose People and Chapters
+    async with aiofiles.open(path, encoding="utf-8") as fp:
+        return json.loads(await fp.read())
+
+
+async def test_parse_audiobook(connection: Connection) -> None:
+    """Test we can parse a single-file Jellyfin audiobook with chapters and progress."""
+    raw = await _load_raw(AUDIOBOOK_FIXTURES / "discount_dan.json")
+    book = parse_audiobook("xx-instance-id", connection, raw)
+    assert book.item_id == "c022338cd4fa4f51de8ae471c7e978d8"
+    assert book.name == "Discount Dan - Discount Dan’s Backroom Bargains, Book 1"
+    assert book.sort_name.startswith("0001 - Discount Dan")
+    assert list(book.authors) == ["James Hunter"]
+    assert list(book.narrators) == ["Steve Campbell"]
+    assert book.duration == 55648  # RunTimeTicks // 10_000_000
+    chapters = book.metadata.chapters
+    assert chapters is not None
+    assert len(chapters) == 59
+    assert chapters[0].position == 1
+    assert chapters[0].start == 0
+    assert chapters[1].start == pytest.approx(15.964)
+    assert chapters[0].end == chapters[1].start
+    assert chapters[-1].end == book.duration
+    assert book.resume_position_ms == 3_600_000
+    assert book.fully_played is False
+    assert book.metadata.description is not None
+    assert book.metadata.description.startswith("<p><b>Noclip in")
+    assert book.metadata.images
+
+
+async def test_parse_audiobook_without_chapters_or_runtime(connection: Connection) -> None:
+    """Test a book missing chapters and runtime still parses."""
+    raw = await _load_raw(AUDIOBOOK_FIXTURES / "no_chapters.json")
+    book = parse_audiobook("xx-instance-id", connection, raw)
+    assert book.name == "A Book Without Chapters"
+    assert not book.metadata.chapters
+    assert book.duration == 0
+    assert book.resume_position_ms == 0

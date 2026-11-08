@@ -1,0 +1,14 @@
+{
+  "Name": "An Ebook",
+  "Id": "00000000000000000000000000000b03",
+  "Type": "Book",
+  "ParentId": "ebook-parent",
+  "IsFolder": false,
+  "MediaType": "Book",
+  "UserData": {
+    "PlaybackPositionTicks": 0,
+    "Played": false,
+    "IsFavorite": false,
+    "PlayCount": 0
+  }
+}

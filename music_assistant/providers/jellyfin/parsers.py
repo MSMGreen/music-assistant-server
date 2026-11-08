@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from logging import Logger
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from aiojellyfin import ImageType as JellyImageType
 from music_assistant_models.enums import ContentType, ExternalID, ImageType, MediaType
@@ -12,8 +12,10 @@ from music_assistant_models.errors import InvalidDataError
 from music_assistant_models.media_items import (
     Album,
     Artist,
+    Audiobook,
     AudioFormat,
     ItemMapping,
+    MediaItemChapter,
     MediaItemImage,
     Playlist,
     ProviderMapping,
@@ -25,6 +27,8 @@ from music_assistant.constants import UNKNOWN_ARTIST
 from music_assistant.helpers.util import parse_title_and_version
 
 from .const import (
+    CHAPTER_KEY_NAME,
+    CHAPTER_KEY_START_TICKS,
     DOMAIN,
     ITEM_KEY_ALBUM,
     ITEM_KEY_ALBUM_ARTIST,
@@ -32,6 +36,7 @@ from .const import (
     ITEM_KEY_ALBUM_ID,
     ITEM_KEY_ARTIST_ITEMS,
     ITEM_KEY_CAN_DOWNLOAD,
+    ITEM_KEY_CHAPTERS,
     ITEM_KEY_CONTAINER,
     ITEM_KEY_ID,
     ITEM_KEY_IMAGE_TAGS,
@@ -48,13 +53,22 @@ from .const import (
     ITEM_KEY_NAME,
     ITEM_KEY_OVERVIEW,
     ITEM_KEY_PARENT_INDEX_NUM,
+    ITEM_KEY_PEOPLE,
     ITEM_KEY_PRODUCTION_YEAR,
     ITEM_KEY_PROVIDER_IDS,
     ITEM_KEY_RUNTIME_TICKS,
     ITEM_KEY_SORT_NAME,
     ITEM_KEY_USER_DATA,
     MEDIA_IMAGE_TYPES,
+    PERSON_KEY_NAME,
+    PERSON_KEY_TYPE,
+    PERSON_TYPE_AUTHOR,
+    PERSON_TYPE_NARRATOR,
+    TICKS_PER_MS,
+    TICKS_PER_SECOND,
     USER_DATA_KEY_IS_FAVORITE,
+    USER_DATA_KEY_PLAYED,
+    USER_DATA_KEY_POSITION_TICKS,
 )
 
 if TYPE_CHECKING:
@@ -301,6 +315,73 @@ def parse_playlist(
     playlist.favorite = user_data.get(USER_DATA_KEY_IS_FAVORITE, False)
     playlist.is_editable = False
     return playlist
+
+
+def parse_audiobook(
+    instance_id: str,
+    connection: Connection,
+    jellyfin_book: dict[str, Any],
+) -> Audiobook:
+    """
+    Parse a Jellyfin AudioBook item to an Audiobook model object.
+
+    Authors and narrators are kept as names: they are Jellyfin people, not music artists,
+    so there is no artist item for Music Assistant to look up.
+
+    :param instance_id: Instance id of the provider.
+    :param connection: Connection used to build artwork URLs.
+    :param jellyfin_book: The raw Jellyfin item.
+    """
+    book_id = jellyfin_book[ITEM_KEY_ID]
+    duration = int(jellyfin_book.get(ITEM_KEY_RUNTIME_TICKS) or 0) // TICKS_PER_SECOND
+    book = Audiobook(
+        item_id=book_id,
+        name=jellyfin_book[ITEM_KEY_NAME],
+        provider=instance_id,
+        duration=duration,
+        provider_mappings={
+            ProviderMapping(
+                item_id=str(book_id),
+                provider_domain=DOMAIN,
+                provider_instance=instance_id,
+            )
+        },
+    )
+    if ITEM_KEY_SORT_NAME in jellyfin_book:
+        book.sort_name = jellyfin_book[ITEM_KEY_SORT_NAME]
+    if ITEM_KEY_OVERVIEW in jellyfin_book:
+        book.metadata.description = jellyfin_book[ITEM_KEY_OVERVIEW]
+    people = jellyfin_book.get(ITEM_KEY_PEOPLE) or []
+    book.authors.set(_people_named(people, PERSON_TYPE_AUTHOR))
+    book.narrators.set(_people_named(people, PERSON_TYPE_NARRATOR))
+    book.metadata.chapters = _parse_chapters(jellyfin_book, duration)
+    book.metadata.images = _get_artwork(instance_id, connection, cast("Any", jellyfin_book))
+    user_data = jellyfin_book.get(ITEM_KEY_USER_DATA) or {}
+    book.favorite = user_data.get(USER_DATA_KEY_IS_FAVORITE, False)
+    book.resume_position_ms = int(user_data.get(USER_DATA_KEY_POSITION_TICKS) or 0) // TICKS_PER_MS
+    book.fully_played = bool(user_data.get(USER_DATA_KEY_PLAYED, False))
+    return book
+
+
+def _people_named(people: list[dict[str, Any]], person_type: str) -> list[str]:
+    return [p[PERSON_KEY_NAME] for p in people if p.get(PERSON_KEY_TYPE) == person_type]
+
+
+def _parse_chapters(jellyfin_book: dict[str, Any], duration: int) -> list[MediaItemChapter]:
+    raw_chapters = jellyfin_book.get(ITEM_KEY_CHAPTERS) or []
+    starts = [int(c.get(CHAPTER_KEY_START_TICKS) or 0) / TICKS_PER_SECOND for c in raw_chapters]
+    chapters = []
+    for idx, chapter in enumerate(raw_chapters):
+        end = starts[idx + 1] if idx + 1 < len(starts) else (duration or None)
+        chapters.append(
+            MediaItemChapter(
+                position=idx + 1,
+                name=chapter.get(CHAPTER_KEY_NAME) or f"Chapter {idx + 1}",
+                start=starts[idx],
+                end=end,
+            )
+        )
+    return chapters
 
 
 def _unknown_artist_mapping(instance_id: str) -> ItemMapping:

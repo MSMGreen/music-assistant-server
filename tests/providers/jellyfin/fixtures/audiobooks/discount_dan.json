@@ -1,0 +1,563 @@
+{
+  "Name": "Discount Dan - Discount Dan’s Backroom Bargains, Book 1",
+  "ServerId": "90473833b7f44d0ba09637264e7b4e81",
+  "Id": "c022338cd4fa4f51de8ae471c7e978d8",
+  "DateCreated": "2026-10-12T09:12:22.0000000Z",
+  "HasLyrics": false,
+  "SortName": "0001 - Discount Dan - Discount Dan’s Backroom Bargains, Book 1",
+  "PremiereDate": "2025-03-11T00:00:00.0000000Z",
+  "MediaSources": [
+    {
+      "Protocol": "File",
+      "Id": "c022338cd4fa4f51de8ae471c7e978d8",
+      "Path": "/mnt/media/Media/Books/Audiobooks/James Hunter/Discount Dans Backroom Bargains/01 - Discount Dan/Discount Dan .m4b",
+      "Type": "Default",
+      "Container": "m4b",
+      "Size": 883283912,
+      "Name": "Discount Dan ",
+      "IsRemote": false,
+      "ETag": "a6f439139b5739bd95c122d4d236f01a",
+      "RunTimeTicks": 556482466670,
+      "ReadAtNativeFramerate": false,
+      "IgnoreDts": false,
+      "IgnoreIndex": false,
+      "GenPtsInput": false,
+      "SupportsTranscoding": true,
+      "SupportsDirectStream": true,
+      "SupportsDirectPlay": true,
+      "IsInfiniteStream": false,
+      "UseMostCompatibleTranscodingProfile": false,
+      "RequiresOpening": false,
+      "RequiresClosing": false,
+      "RequiresLooping": false,
+      "SupportsProbing": true,
+      "MediaStreams": [
+        {
+          "Codec": "aac",
+          "Language": "eng",
+          "TimeBase": "1/44100",
+          "Title": "\u0019Apple Sound Media Handler",
+          "VideoRange": "Unknown",
+          "VideoRangeType": "Unknown",
+          "AudioSpatialFormat": "None",
+          "LocalizedDefault": "Default",
+          "LocalizedExternal": "External",
+          "LocalizedLanguage": "English",
+          "LocalizedOriginal": "Original",
+          "DisplayTitle": "\u0019Apple Sound Media Handler - English - AAC - Stereo - Default",
+          "IsInterlaced": false,
+          "ChannelLayout": "stereo",
+          "BitRate": 125588,
+          "Channels": 2,
+          "SampleRate": 44100,
+          "IsDefault": true,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsOriginal": false,
+          "Profile": "LC",
+          "Type": "Audio",
+          "Index": 0,
+          "IsExternal": false,
+          "IsTextSubtitleStream": false,
+          "SupportsExternalStream": false
+        },
+        {
+          "Codec": "bin_data",
+          "Language": "eng",
+          "TimeBase": "1/1000",
+          "VideoRange": "Unknown",
+          "VideoRangeType": "Unknown",
+          "AudioSpatialFormat": "None",
+          "IsInterlaced": false,
+          "IsDefault": false,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsOriginal": false,
+          "Type": "Data",
+          "Index": 1,
+          "IsExternal": false,
+          "IsTextSubtitleStream": false,
+          "SupportsExternalStream": false
+        },
+        {
+          "Codec": "mjpeg",
+          "ColorSpace": "bt470bg",
+          "TimeBase": "1/90000",
+          "VideoRange": "Unknown",
+          "VideoRangeType": "Unknown",
+          "AudioSpatialFormat": "None",
+          "IsInterlaced": false,
+          "BitDepth": 8,
+          "IsDefault": false,
+          "IsForced": false,
+          "IsHearingImpaired": false,
+          "IsOriginal": false,
+          "Height": 600,
+          "Width": 600,
+          "RealFrameRate": 90000,
+          "ReferenceFrameRate": 90000,
+          "Profile": "Baseline",
+          "Type": "EmbeddedImage",
+          "AspectRatio": "1:1",
+          "Index": 2,
+          "IsExternal": false,
+          "IsTextSubtitleStream": false,
+          "SupportsExternalStream": false,
+          "PixelFormat": "yuvj420p",
+          "Level": -99,
+          "IsAnamorphic": false
+        }
+      ],
+      "MediaAttachments": [],
+      "Formats": [],
+      "Bitrate": 126980,
+      "RequiredHttpHeaders": {},
+      "TranscodingSubProtocol": "http",
+      "DefaultAudioStreamIndex": 0,
+      "HasSegments": false
+    }
+  ],
+  "Path": "/mnt/media/Media/Books/Audiobooks/James Hunter/Discount Dans Backroom Bargains/01 - Discount Dan/Discount Dan .m4b",
+  "ChannelId": null,
+  "Overview": "<p><b>Noclip in, no way out ...</b></p> <p>All Dan wants is to find a way home. He'd settle for a beer, a bite to eat, and a place to sleep off his hangover.</p> <p>But, in an endless, ever-changing dungeon cobbled together from twisted carnivals, abandoned shopping malls, janky laundromats, and condemned insane asylums, getting a bit of shut-eye is harder than it sounds.</p> <p>Dan has accidentally \"Noclipped\" into the Backrooms—a bizarro, extra-dimensional Alice-in-Wonderland world, overrun with horrific nightmare creatures known as the Dwellers. No one ever gets out. Hell, forget about leaving, if Dan wants to survive the week, he's going to need to harness the strange game-like magic of the Backrooms, make some very sketchy allies, and carve out a little safe haven to call his own.</p> <p>And he's going to need to do it fast because Dan is being hunted. The Flayed Monarch of the 999th floor has marked him for death and no one walks away from the Skinless Court with their hide intact ...</p> <p>“The book is a f***ing delight. I enjoyed the absolute hell out of it and think it's an excellent use of pop culture to make something fun and horrific and awesome.” (Eric Ugland, author of the Good Guys and Bad Guys series)</p> <p>“Buckle up, buttercup! James Hunter takes you on a balls-to-the-wall adventure that's as insane as it is awesome.” (Jez Cajiao, author of the Arise and Rise of Mankind series)</p>",
+  "Genres": [
+    "Science Fiction & Fantasy:Fantasy"
+  ],
+  "RunTimeTicks": 556482466670,
+  "ProductionYear": 2025,
+  "IndexNumber": 1,
+  "ProviderIds": {},
+  "IsFolder": false,
+  "ParentId": "4cb05e62b8c922434480f9e02c4fe2bb",
+  "Type": "AudioBook",
+  "People": [
+    {
+      "Name": "James Hunter",
+      "Id": "67e8b9efd7f53db8249412040aa184be",
+      "Role": "",
+      "Type": "Author"
+    },
+    {
+      "Name": "Steve Campbell",
+      "Id": "26ce3b6c47d7300fb7d5723f30e2e1c8",
+      "Role": "",
+      "Type": "Narrator"
+    }
+  ],
+  "GenreItems": [
+    {
+      "Name": "Science Fiction & Fantasy:Fantasy",
+      "Id": "3269c76e3682c31787a1e3cfc93f15c1"
+    }
+  ],
+  "UserData": {
+    "PlaybackPositionTicks": 36000000000,
+    "PlayCount": 0,
+    "IsFavorite": false,
+    "Played": false,
+    "Key": "James Hunter-Discount Dan-0001Discount Dan - Discount Dan’s Backroom Bargains, Book 1",
+    "ItemId": "c022338cd4fa4f51de8ae471c7e978d8"
+  },
+  "Artists": [
+    "James Hunter"
+  ],
+  "ArtistItems": [
+    {
+      "Name": "James Hunter",
+      "Id": "48570f2ed89e2649e64704e68abfdc19"
+    }
+  ],
+  "Album": "Discount Dan",
+  "AlbumArtist": "James Hunter",
+  "AlbumArtists": [
+    {
+      "Name": "James Hunter",
+      "Id": "48570f2ed89e2649e64704e68abfdc19"
+    }
+  ],
+  "MediaStreams": [
+    {
+      "Codec": "aac",
+      "Language": "eng",
+      "TimeBase": "1/44100",
+      "Title": "\u0019Apple Sound Media Handler",
+      "VideoRange": "Unknown",
+      "VideoRangeType": "Unknown",
+      "AudioSpatialFormat": "None",
+      "LocalizedDefault": "Default",
+      "LocalizedExternal": "External",
+      "LocalizedLanguage": "English",
+      "LocalizedOriginal": "Original",
+      "DisplayTitle": "\u0019Apple Sound Media Handler - English - AAC - Stereo - Default",
+      "IsInterlaced": false,
+      "ChannelLayout": "stereo",
+      "BitRate": 125588,
+      "Channels": 2,
+      "SampleRate": 44100,
+      "IsDefault": true,
+      "IsForced": false,
+      "IsHearingImpaired": false,
+      "IsOriginal": false,
+      "Profile": "LC",
+      "Type": "Audio",
+      "Index": 0,
+      "IsExternal": false,
+      "IsTextSubtitleStream": false,
+      "SupportsExternalStream": false
+    },
+    {
+      "Codec": "bin_data",
+      "Language": "eng",
+      "TimeBase": "1/1000",
+      "VideoRange": "Unknown",
+      "VideoRangeType": "Unknown",
+      "AudioSpatialFormat": "None",
+      "IsInterlaced": false,
+      "IsDefault": false,
+      "IsForced": false,
+      "IsHearingImpaired": false,
+      "IsOriginal": false,
+      "Type": "Data",
+      "Index": 1,
+      "IsExternal": false,
+      "IsTextSubtitleStream": false,
+      "SupportsExternalStream": false
+    },
+    {
+      "Codec": "mjpeg",
+      "ColorSpace": "bt470bg",
+      "TimeBase": "1/90000",
+      "VideoRange": "Unknown",
+      "VideoRangeType": "Unknown",
+      "AudioSpatialFormat": "None",
+      "IsInterlaced": false,
+      "BitDepth": 8,
+      "IsDefault": false,
+      "IsForced": false,
+      "IsHearingImpaired": false,
+      "IsOriginal": false,
+      "Height": 600,
+      "Width": 600,
+      "RealFrameRate": 90000,
+      "ReferenceFrameRate": 90000,
+      "Profile": "Baseline",
+      "Type": "EmbeddedImage",
+      "AspectRatio": "1:1",
+      "Index": 2,
+      "IsExternal": false,
+      "IsTextSubtitleStream": false,
+      "SupportsExternalStream": false,
+      "PixelFormat": "yuvj420p",
+      "Level": -99,
+      "IsAnamorphic": false
+    }
+  ],
+  "ImageTags": {
+    "Primary": "ca63e87a205774d3013c6578d7b9cf48"
+  },
+  "BackdropImageTags": [],
+  "ImageBlurHashes": {
+    "Primary": {
+      "ca63e87a205774d3013c6578d7b9cf48": "eLEolA4:H;t.I[0rxmv|OHxsEdnlW@xnVt=;s:OsMzxT9HozXAxTaO"
+    }
+  },
+  "Chapters": [
+    {
+      "StartPositionTicks": 0,
+      "Name": "Opening Credits",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 159640000,
+      "Name": "Summary",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 935290000,
+      "Name": "One: The Hangover",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 9424270000,
+      "Name": "Two: That’s so ‘90s!",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 16855810000,
+      "Name": "Three: Clash of Legends",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 28598370000,
+      "Name": "Four: Research Achievement Unlocked!",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 40720810000,
+      "Name": "Five: Endless Corridors",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 52126450000,
+      "Name": "Six: Janitorial Handyman",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 59884700000,
+      "Name": "Seven: Bathroom Brawler",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 69716950000,
+      "Name": "Eight: To Greener Pastures",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 77846020000,
+      "Name": "Nine: Croc Dog",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 86662400000,
+      "Name": "Ten: Relics Galore",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 95393330000,
+      "Name": "Eleven: Barry’s Blacklight Emporium",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 103637570000,
+      "Name": "Twelve: The Backrooms VIRUS",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 115991280000,
+      "Name": "Thirteen: Compass of the Catacomber",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 130199100000,
+      "Name": "Fourteen: The Job Board",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 139113700000,
+      "Name": "Fifteen: Minor Detour",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 149675060000,
+      "Name": "Sixteen: Extreme Gains",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 158660480000,
+      "Name": "Seventeen: Gamblers Paradise",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 170441120000,
+      "Name": "Eighteen: Triple M",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 179728170000,
+      "Name": "Nineteen: Froyo for Everyone!",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 186887570000,
+      "Name": "Twenty: March to the Mart",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 201058940000,
+      "Name": "Twenty-One: MediocreMart",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 211321920000,
+      "Name": "Twenty-Two: Let’s Reminisce",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 217919400000,
+      "Name": "Twenty-Three: Cleanup, Aisle Five",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 225369520000,
+      "Name": "Twenty-Four: The Harmacist",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 238261000000,
+      "Name": "Twenty-Five: Corvo’s Blanket Fort",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 250728950000,
+      "Name": "Twenty-Six: Friends Don’t Lie",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 261872430000,
+      "Name": "Twenty-Seven: Cannon Fodder",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 274426990000,
+      "Name": "Twenty-Eight: New Management",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 287721570000,
+      "Name": "Twenty-Nine: New Addition",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 301759190000,
+      "Name": "Thirty: Guerilla Marketing",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 311570310000,
+      "Name": "Thirty-One: The Daily Grind",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 325302590000,
+      "Name": "Thirty-Two: Shopkeeper",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 341831010000,
+      "Name": "Thirty-Three: R & R",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 353997100000,
+      "Name": "Thirty-Four: The Seventh Floor",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 364944140000,
+      "Name": "Thirty-Five: The School Zone",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 376799780000,
+      "Name": "Thirty-Six: Goosey Goosey Gander",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 383842850000,
+      "Name": "Thirty-Seven: The Red Hands",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 391805660000,
+      "Name": "Thirty-Eight: Killing Blow",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 402645190000,
+      "Name": "Thirty-Nine: Knight in Scaly Armor",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 409285860000,
+      "Name": "Forty: The Odd Couple",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 420068510000,
+      "Name": "Forty-One: Old History",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 429292400000,
+      "Name": "Forty-Two: The Assignment",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 437598640000,
+      "Name": "Forty-Three: Gear Up",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 446658830000,
+      "Name": "Forty-Four: Mana Displacement Effect",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 456615770000,
+      "Name": "Forty-Five: Jungle Gym Jamboree",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 469562280000,
+      "Name": "Forty-Six: Fun and Games",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 477793280000,
+      "Name": "Forty-Seven: The Prize Booth",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 484387510000,
+      "Name": "Forty-Eight: Now Hiring",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 490884680000,
+      "Name": "Forty-Nine: Mana Hack",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 498792000000,
+      "Name": "Fifty: Welcome to the Funhouse",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 508014500000,
+      "Name": "Fifty-One: Monkey Business",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 516081800000,
+      "Name": "Fifty-Two: Barrels of Fun",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 523565590000,
+      "Name": "Fifty-Three: Revenge of the Frank",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 530763310000,
+      "Name": "Fifty-Four: Choke on This",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 538576820000,
+      "Name": "Fifty-Five: Just Rewards",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 551502670000,
+      "Name": "Epilogue",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    },
+    {
+      "StartPositionTicks": 555982670000,
+      "Name": "End Credits",
+      "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+    }
+  ],
+  "LocationType": "FileSystem",
+  "MediaType": "Audio"
+}
