@@ -5,8 +5,9 @@ from __future__ import annotations
 import hashlib
 import socket
 from asyncio import TaskGroup
+from collections import Counter
 from collections.abc import AsyncGenerator
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from aiojellyfin import MediaLibrary as JellyMediaLibrary
@@ -17,6 +18,7 @@ from music_assistant_models.errors import LoginFailed, MediaNotFoundError
 from music_assistant_models.media_items import (
     Album,
     Artist,
+    Audiobook,
     Playlist,
     ProviderMapping,
     SearchResults,
@@ -33,6 +35,7 @@ from music_assistant.providers.jellyfin.parsers import (
     audio_format,
     parse_album,
     parse_artist,
+    parse_audiobook,
     parse_playlist,
     parse_track,
 )
@@ -40,6 +43,9 @@ from music_assistant.providers.jellyfin.parsers import (
 from .const import (
     ALBUM_FIELDS,
     ARTIST_FIELDS,
+    AUDIOBOOK_FIELDS,
+    AUDIOBOOK_PAGE_SIZE,
+    COLLECTION_TYPE_BOOKS,
     COLLECTION_TYPE_MUSIC,
     COLLECTION_TYPE_PLAYLISTS,
     ITEM_KEY_COLLECTION_TYPE,
@@ -47,7 +53,10 @@ from .const import (
     ITEM_KEY_MEDIA_STREAMS,
     ITEM_KEY_MEDIA_TYPE,
     ITEM_KEY_NAME,
+    ITEM_KEY_PARENT_ID,
     ITEM_KEY_RUNTIME_TICKS,
+    ITEM_KEY_TYPE,
+    ITEM_TYPE_AUDIOBOOK,
     MEDIA_TYPE_AUDIO,
     SUPPORTED_CONTAINER_FORMATS,
     TRACK_FIELDS,
@@ -67,6 +76,7 @@ SUPPORTED_FEATURES = {
     ProviderFeature.LIBRARY_ALBUMS,
     ProviderFeature.LIBRARY_TRACKS,
     ProviderFeature.LIBRARY_PLAYLISTS,
+    ProviderFeature.LIBRARY_AUDIOBOOKS,
     ProviderFeature.BROWSE,
     ProviderFeature.SEARCH,
     ProviderFeature.ARTIST_ALBUMS,
@@ -296,6 +306,94 @@ class JellyfinProvider(MusicProvider):
                         yield parse_playlist(self.instance_id, self._client, playlist)
                 else:  # emby playlists are only audio type
                     yield parse_playlist(self.instance_id, self._client, playlist)
+
+    async def get_library_audiobooks(self) -> AsyncGenerator[Audiobook]:
+        """
+        Retrieve all single-file audiobooks from the Jellyfin books libraries.
+
+        A book made of several files shows up in Jellyfin as several AudioBook items sharing
+        a parent folder. Music Assistant could only play those as unrelated books, each with
+        its own resume point, so they are skipped.
+        """
+        for library in await self._get_book_libraries():
+            books = [book async for book in self._iter_raw_audiobooks(library[ITEM_KEY_ID])]
+            per_parent = Counter(book.get(ITEM_KEY_PARENT_ID) for book in books)
+            warned: set[str] = set()
+            for book in books:
+                parent = book.get(ITEM_KEY_PARENT_ID)
+                if parent and per_parent[parent] > 1:
+                    if parent not in warned:
+                        warned.add(parent)
+                        self.logger.warning(
+                            "Skipping multi-file audiobook in folder %s: %s files",
+                            parent,
+                            per_parent[parent],
+                        )
+                    continue
+                try:
+                    yield parse_audiobook(self.instance_id, self._client, book)
+                except (KeyError, ValueError) as err:
+                    self.report_skipped_sync_item(MediaType.AUDIOBOOK, book.get(ITEM_KEY_ID), err)
+
+    async def get_audiobook(self, prov_audiobook_id: str) -> Audiobook:
+        """Get full audiobook details by id."""
+        book = await self._get_raw_audiobook(prov_audiobook_id)
+        return parse_audiobook(self.instance_id, self._client, book)
+
+    async def _iter_raw_audiobooks(self, library_id: str) -> AsyncGenerator[dict[str, Any]]:
+        """
+        Yield the raw AudioBook items of a library.
+
+        Raw JSON on purpose: aiojellyfin's typed decoders lose People and Chapters.
+
+        :param library_id: Id of the Jellyfin library.
+        """
+        offset = 0
+        while True:
+            page = await self._client._session.get_json(
+                "/Items",
+                params={
+                    "parentId": library_id,
+                    "includeItemTypes": ITEM_TYPE_AUDIOBOOK,
+                    "recursive": "true",
+                    "enableUserData": "true",
+                    "fields": ",".join(AUDIOBOOK_FIELDS),
+                    "limit": str(AUDIOBOOK_PAGE_SIZE),
+                    "startIndex": str(offset),
+                },
+            )
+            for book in page["Items"]:
+                yield book
+            offset += AUDIOBOOK_PAGE_SIZE
+            if offset >= page["TotalRecordCount"]:
+                return
+
+    async def _get_raw_audiobook(self, item_id: str) -> dict[str, Any]:
+        """
+        Return the raw item of an audiobook.
+
+        :param item_id: Id of the audiobook.
+        :raises MediaNotFoundError: If there is no such item, or it is not an audiobook.
+        """
+        try:
+            item = await self._client._session.get_json(
+                f"/Users/{self._client._user_id}/Items/{item_id}",
+                params={"fields": ",".join(AUDIOBOOK_FIELDS), "enableUserData": "true"},
+            )
+        except NotFound as err:
+            raise MediaNotFoundError(f"Item {item_id} not found") from err
+        if item.get(ITEM_KEY_TYPE) != ITEM_TYPE_AUDIOBOOK:
+            raise MediaNotFoundError(f"Item {item_id} is not an audiobook")
+        return item
+
+    async def _get_book_libraries(self) -> list[JellyMediaLibrary]:
+        """Return all books libraries the user has access to."""
+        response = await self._client.get_media_folders()
+        return [
+            library
+            for library in response["Items"]
+            if library.get(ITEM_KEY_COLLECTION_TYPE) == COLLECTION_TYPE_BOOKS
+        ]
 
     async def get_album(self, prov_album_id: str) -> Album:
         """Get full album details by id."""

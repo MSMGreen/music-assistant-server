@@ -43,6 +43,7 @@ ITEM_KEY_ARTIST_ITEMS: Final = "ArtistItems"
 ITEM_KEY_CAN_DOWNLOAD: Final = "CanDownload"
 ITEM_KEY_PARENT_INDEX_NUM: Final = "ParentIndexNumber"
 ITEM_KEY_RUNTIME_TICKS: Final = "RunTimeTicks"
+ITEM_KEY_TYPE: Final = "Type"
 ITEM_KEY_USER_DATA: Final = "UserData"
 
 USER_DATA_KEY_IS_FAVORITE: Final = "IsFavorite"
@@ -62,6 +63,8 @@ TICKS_PER_SECOND: Final = 10_000_000
 TICKS_PER_MS: Final = 10_000
 
 MEDIA_TYPE_AUDIO: Final = "Audio"
+ITEM_TYPE_AUDIOBOOK: Final = "AudioBook"
+AUDIOBOOK_PAGE_SIZE: Final = 100
 
 SUPPORTED_CONTAINER_FORMATS: Final = "ogg,flac,mp3,aac,mpeg,alac,wav,aiff,wma,m4a,m4b,dsf,opus,wv"
 
