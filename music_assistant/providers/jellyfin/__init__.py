@@ -7,9 +7,11 @@ import socket
 from asyncio import TaskGroup
 from collections import Counter
 from collections.abc import AsyncGenerator
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from aiohttp import ClientError
 from aiojellyfin import MediaLibrary as JellyMediaLibrary
 from aiojellyfin import NotFound, authenticate_by_name
 from aiojellyfin.session import SessionConfiguration
@@ -19,6 +21,7 @@ from music_assistant_models.media_items import (
     Album,
     Artist,
     Audiobook,
+    MediaItemType,
     Playlist,
     ProviderMapping,
     SearchResults,
@@ -28,6 +31,7 @@ from music_assistant_models.streamdetails import StreamDetails
 
 from music_assistant.constants import UNKNOWN_ARTIST, UNKNOWN_ARTIST_ID_MBID
 from music_assistant.controllers.cache import use_cache
+from music_assistant.helpers.datetime import utc
 from music_assistant.mass import MusicAssistant
 from music_assistant.models import ProviderInstanceType
 from music_assistant.models.music_provider import MusicProvider
@@ -56,11 +60,17 @@ from .const import (
     ITEM_KEY_PARENT_ID,
     ITEM_KEY_RUNTIME_TICKS,
     ITEM_KEY_TYPE,
+    ITEM_KEY_USER_DATA,
     ITEM_TYPE_AUDIOBOOK,
     MEDIA_TYPE_AUDIO,
     SUPPORTED_CONTAINER_FORMATS,
+    TICKS_PER_MS,
+    TICKS_PER_SECOND,
     TRACK_FIELDS,
     USER_APP_NAME,
+    USER_DATA_KEY_LAST_PLAYED,
+    USER_DATA_KEY_PLAYED,
+    USER_DATA_KEY_POSITION_TICKS,
 )
 
 if TYPE_CHECKING:
@@ -100,6 +110,8 @@ class JellyfinProvider(MusicProvider):
 
     async def handle_async_init(self) -> None:
         """Initialize provider(instance) with given configuration."""
+        # per audiobook, the position in Jellyfin we last read at play start or wrote ourselves
+        self._known_ticks: dict[str, int] = {}
         username = str(self.get_setup_value(CONF_USERNAME))
 
         # Device ID should be stable between reboots
@@ -339,6 +351,111 @@ class JellyfinProvider(MusicProvider):
         """Get full audiobook details by id."""
         book = await self._get_raw_audiobook(prov_audiobook_id)
         return parse_audiobook(self.instance_id, self._client, book)
+
+    async def get_resume_position(
+        self, item_id: str, media_type: MediaType
+    ) -> tuple[bool, int, datetime | None]:
+        """
+        Get the resume point of an audiobook from Jellyfin.
+
+        Jellyfin holds the household's one shared place in a book, which other clients move too,
+        and most of them do not record when. Music Assistant takes the higher of its own position
+        and this one unless this one has a newer timestamp, which would ignore a rewind in another
+        app. So a position Jellyfin holds is reported as current. When it holds nothing there is
+        no timestamp, so a place only Music Assistant knows is kept.
+
+        :param item_id: Id of the audiobook.
+        :param media_type: The media type of the item.
+        """
+        if media_type != MediaType.AUDIOBOOK:
+            raise NotImplementedError
+        book = await self._get_raw_audiobook(item_id)
+        user_data = book.get(ITEM_KEY_USER_DATA) or {}
+        ticks = int(user_data.get(USER_DATA_KEY_POSITION_TICKS) or 0)
+        played = bool(user_data.get(USER_DATA_KEY_PLAYED, False))
+        self._known_ticks[item_id] = ticks
+        if not ticks and not played:
+            return False, 0, None
+        return played, ticks // TICKS_PER_MS, utc()
+
+    async def on_played(
+        self,
+        media_type: MediaType,
+        prov_item_id: str,
+        fully_played: bool,
+        position: int,
+        media_item: MediaItemType,
+        is_playing: bool = False,
+    ) -> None:
+        """
+        Write the progress of an audiobook back to Jellyfin.
+
+        :param media_type: The media type of the played item.
+        :param prov_item_id: Id of the played item.
+        :param fully_played: Whether the item was played to its end.
+        :param position: Last known position in seconds.
+        :param media_item: The played item.
+        :param is_playing: Whether the item is still playing.
+        """
+        if media_type != MediaType.AUDIOBOOK:
+            return
+        # the last seconds of a book count as fully played while they are still playing
+        finished = fully_played and not is_playing
+        marked_unplayed = not fully_played and not position and not is_playing
+        if not finished and not marked_unplayed and not position:
+            # a zero position during playback means nothing, and would wipe the shared place
+            return
+        ticks = 0 if finished or marked_unplayed else int(position * TICKS_PER_SECOND)
+        try:
+            if not finished and not marked_unplayed and await self._moved_elsewhere(prov_item_id):
+                self.logger.debug("Not writing %s: moved by another client", prov_item_id)
+                return
+            await self._post_user_data(
+                prov_item_id,
+                {
+                    USER_DATA_KEY_POSITION_TICKS: ticks,
+                    USER_DATA_KEY_PLAYED: finished,
+                    USER_DATA_KEY_LAST_PLAYED: utc().isoformat(),
+                },
+            )
+        except (ClientError, TimeoutError, MediaNotFoundError) as err:
+            self.logger.warning("Could not save progress of %s: %s", prov_item_id, err)
+            return
+        self._known_ticks[prov_item_id] = ticks
+
+    async def _moved_elsewhere(self, item_id: str) -> bool:
+        """
+        Return whether another client moved the position since we last read or wrote it.
+
+        :param item_id: Id of the audiobook.
+        """
+        known = self._known_ticks.get(item_id)
+        if known is None:
+            return False
+        book = await self._get_raw_audiobook(item_id)
+        user_data = book.get(ITEM_KEY_USER_DATA) or {}
+        return int(user_data.get(USER_DATA_KEY_POSITION_TICKS) or 0) != known
+
+    async def _post_user_data(self, item_id: str, data: dict[str, Any]) -> None:
+        """
+        Update the user data of an item for the signed-in user.
+
+        :param item_id: Id of the item.
+        :param data: The user data fields to set; other fields are left alone.
+        """
+        http_session = self.mass.http_session if self._verify_ssl else self.mass.http_session_no_ssl
+        config = self._client._session_config
+        async with http_session.post(
+            f"{self._client.base_url}/UserItems/{item_id}/UserData",
+            params={"userId": self._client._user_id},
+            json=data,
+            headers={
+                "User-Agent": config.user_agent,
+                "Authorization": config.authentication_header(self._client._access_token),
+            },
+            raise_for_status=True,
+        ):
+            pass
 
     async def _iter_raw_audiobooks(self, library_id: str) -> AsyncGenerator[dict[str, Any]]:
         """

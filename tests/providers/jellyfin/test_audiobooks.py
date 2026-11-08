@@ -5,12 +5,14 @@ from collections.abc import AsyncGenerator, Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 from unittest import mock
 
+import aiohttp
 import pytest
 from aiojellyfin import Connection
 from aiojellyfin.session import SessionConfiguration
 from aiojellyfin.testing import FixtureBuilder
 from music_assistant_models.enums import MediaType
 from music_assistant_models.errors import MediaNotFoundError
+from music_assistant_models.media_items import Audiobook
 
 from music_assistant.mass import MusicAssistant
 from music_assistant.providers.jellyfin import JellyfinProvider
@@ -169,3 +171,202 @@ async def test_track_stream_details_unchanged(
     stream = await provider.get_stream_details(track_id, MediaType.TRACK)
     assert stream.media_type == MediaType.TRACK
     assert track_id in stream.path
+
+
+POSITION_S = 3600
+POSITION_TICKS = POSITION_S * 10_000_000
+NO_CHAPTERS_ID = "00000000000000000000000000000b02"
+
+
+async def _library_book(mass: MusicAssistant, name: str) -> Audiobook:
+    return next(b for b in await mass.music.audiobooks.library_items() if b.name == name)
+
+
+async def test_resume_position_from_jellyfin(
+    mass: MusicAssistant, jellyfin_books_provider: ProviderConfig
+) -> None:
+    """The position comes from Jellyfin, with a timestamp so that it wins over local state."""
+    provider = _provider(mass, jellyfin_books_provider)
+    played, position_ms, timestamp = await provider.get_resume_position(
+        BOOK_ID, MediaType.AUDIOBOOK
+    )
+    assert played is False
+    assert position_ms == 3_600_000
+    assert timestamp is not None
+
+
+async def test_resume_position_nothing_in_jellyfin_has_no_timestamp(
+    mass: MusicAssistant, jellyfin_books_provider: ProviderConfig
+) -> None:
+    """A book Jellyfin holds no state for does not claim to be current."""
+    provider = _provider(mass, jellyfin_books_provider)
+    assert await provider.get_resume_position(NO_CHAPTERS_ID, MediaType.AUDIOBOOK) == (
+        False,
+        0,
+        None,
+    )
+
+
+async def test_rewinding_in_volume_beats_a_higher_local_position(
+    mass: MusicAssistant, jellyfin_books_provider: ProviderConfig
+) -> None:
+    """Someone rewound in Volume: playback resumes there, not at the later local position."""
+    book = await _library_book(mass, BOOK_NAME)
+    # the playlog is per user: without one there would be no local position to compete with
+    user = await mass.webserver.auth.create_user(username="listener")
+    await mass.music.mark_item_played(
+        book,
+        fully_played=False,
+        seconds_played=9000,
+        user_initiated=False,
+        userid=user.user_id,
+    )
+    assert await mass.music.get_resume_position(book, userid=user.user_id) == (False, 3_600_000)
+
+
+async def test_local_position_kept_when_jellyfin_has_none(
+    mass: MusicAssistant, jellyfin_books_provider: ProviderConfig
+) -> None:
+    """Jellyfin holding nothing must not throw away the place Music Assistant knows."""
+    book = await _library_book(mass, NO_CHAPTERS_NAME)
+    # the playlog is per user: without one there would be no local position to compete with
+    user = await mass.webserver.auth.create_user(username="listener")
+    await mass.music.mark_item_played(
+        book,
+        fully_played=False,
+        seconds_played=500,
+        user_initiated=False,
+        userid=user.user_id,
+    )
+    assert await mass.music.get_resume_position(book, userid=user.user_id) == (False, 500_000)
+
+
+@pytest.fixture
+async def writes(
+    mass: MusicAssistant, jellyfin_books_provider: ProviderConfig
+) -> AsyncGenerator[mock.AsyncMock]:
+    """Capture what the provider writes to Jellyfin."""
+    provider = _provider(mass, jellyfin_books_provider)
+    with mock.patch.object(provider, "_post_user_data", mock.AsyncMock()) as post:
+        yield post
+
+
+async def _on_played(
+    mass: MusicAssistant,
+    config: ProviderConfig,
+    *,
+    position: int,
+    fully_played: bool = False,
+    is_playing: bool = False,
+    media_type: MediaType = MediaType.AUDIOBOOK,
+) -> None:
+    provider = _provider(mass, config)
+    await provider.on_played(
+        media_type=media_type,
+        prov_item_id=BOOK_ID,
+        fully_played=fully_played,
+        position=position,
+        media_item=mock.Mock(),
+        is_playing=is_playing,
+    )
+
+
+async def test_on_played_writes_position(
+    mass: MusicAssistant, jellyfin_books_provider: ProviderConfig, writes: mock.AsyncMock
+) -> None:
+    """Progress while playing is written back as ticks, with the time it was set."""
+    await _on_played(mass, jellyfin_books_provider, position=4000, is_playing=True)
+    writes.assert_awaited_once()
+    item_id, data = writes.await_args.args
+    assert item_id == BOOK_ID
+    assert data["PlaybackPositionTicks"] == 40_000_000_000
+    assert data["Played"] is False
+    assert data["LastPlayedDate"]
+
+
+async def test_on_played_finished(
+    mass: MusicAssistant, jellyfin_books_provider: ProviderConfig, writes: mock.AsyncMock
+) -> None:
+    """A finished book is marked played and its position cleared, like Jellyfin itself does."""
+    await _on_played(mass, jellyfin_books_provider, position=55648, fully_played=True)
+    _, data = writes.await_args.args
+    assert data["Played"] is True
+    assert data["PlaybackPositionTicks"] == 0
+
+
+async def test_on_played_last_seconds_still_playing_not_finished(
+    mass: MusicAssistant, jellyfin_books_provider: ProviderConfig, writes: mock.AsyncMock
+) -> None:
+    """The final seconds count as fully played; stopping there must not lose the place."""
+    await _on_played(
+        mass, jellyfin_books_provider, position=55640, fully_played=True, is_playing=True
+    )
+    _, data = writes.await_args.args
+    assert data["Played"] is False
+    assert data["PlaybackPositionTicks"] == 556_400_000_000
+
+
+async def test_on_played_mark_unplayed(
+    mass: MusicAssistant, jellyfin_books_provider: ProviderConfig, writes: mock.AsyncMock
+) -> None:
+    """Marking a book unplayed in the UI clears it in Jellyfin too."""
+    await _on_played(mass, jellyfin_books_provider, position=0)
+    _, data = writes.await_args.args
+    assert data["Played"] is False
+    assert data["PlaybackPositionTicks"] == 0
+
+
+async def test_on_played_never_writes_zero_while_playing(
+    mass: MusicAssistant, jellyfin_books_provider: ProviderConfig, writes: mock.AsyncMock
+) -> None:
+    """A zero position during playback is noise, and would wipe the household's place."""
+    await _on_played(mass, jellyfin_books_provider, position=0, is_playing=True)
+    writes.assert_not_awaited()
+
+
+async def test_on_played_ignores_tracks(
+    mass: MusicAssistant, jellyfin_books_provider: ProviderConfig, writes: mock.AsyncMock
+) -> None:
+    """Music playback is not written back to Jellyfin; that behaviour is unchanged."""
+    await _on_played(
+        mass, jellyfin_books_provider, position=100, is_playing=True, media_type=MediaType.TRACK
+    )
+    writes.assert_not_awaited()
+
+
+async def test_on_played_does_not_clobber_newer_position(
+    mass: MusicAssistant,
+    jellyfin_books_provider: ProviderConfig,
+    fixture_builder: FixtureBuilder,
+    writes: mock.AsyncMock,
+) -> None:
+    """Volume moved on since playback started here: a late report must not undo that."""
+    provider = _provider(mass, jellyfin_books_provider)
+    await provider.get_resume_position(BOOK_ID, MediaType.AUDIOBOOK)
+    fixture_builder.objects[BOOK_ID]["UserData"]["PlaybackPositionTicks"] = 90_000_000_000
+    await _on_played(mass, jellyfin_books_provider, position=3700)
+    writes.assert_not_awaited()
+
+
+async def test_on_played_continues_after_own_writes(
+    mass: MusicAssistant,
+    jellyfin_books_provider: ProviderConfig,
+    fixture_builder: FixtureBuilder,
+    writes: mock.AsyncMock,
+) -> None:
+    """The position moving because of our own write is not mistaken for Volume moving it."""
+    provider = _provider(mass, jellyfin_books_provider)
+    await provider.get_resume_position(BOOK_ID, MediaType.AUDIOBOOK)
+    await _on_played(mass, jellyfin_books_provider, position=3630, is_playing=True)
+    fixture_builder.objects[BOOK_ID]["UserData"]["PlaybackPositionTicks"] = 36_300_000_000
+    await _on_played(mass, jellyfin_books_provider, position=3660, is_playing=True)
+    assert writes.await_count == 2
+
+
+async def test_on_played_survives_jellyfin_being_down(
+    mass: MusicAssistant, jellyfin_books_provider: ProviderConfig, writes: mock.AsyncMock
+) -> None:
+    """A failed write is logged, not raised into the playback reporting task."""
+    writes.side_effect = aiohttp.ClientError("down")
+    await _on_played(mass, jellyfin_books_provider, position=4000, is_playing=True)
+    writes.assert_awaited_once()
