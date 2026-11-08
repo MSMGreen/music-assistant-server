@@ -501,11 +501,15 @@ class JellyfinProvider(MusicProvider):
         ]
 
     async def get_stream_details(self, item_id: str, media_type: MediaType) -> StreamDetails:
-        """Return the content details for the given track when it will be streamed."""
-        try:
-            jellyfin_track = await self._client.get_track(item_id)
-        except NotFound:
-            raise MediaNotFoundError(f"Item {item_id} not found")
+        """Return the content details for the given track or audiobook when it will be streamed."""
+        jellyfin_track: Any
+        if media_type == MediaType.AUDIOBOOK:
+            jellyfin_track = await self._get_raw_audiobook(item_id)
+        else:
+            try:
+                jellyfin_track = await self._client.get_track(item_id)
+            except NotFound:
+                raise MediaNotFoundError(f"Item {item_id} not found")
         audio_url = self._client.audio_url(
             jellyfin_track[ITEM_KEY_ID], container=SUPPORTED_CONTAINER_FORMATS
         )
@@ -514,6 +518,7 @@ class JellyfinProvider(MusicProvider):
         return StreamDetails(
             item_id=jellyfin_track[ITEM_KEY_ID],
             provider=self.instance_id,
+            media_type=media_type,
             audio_format=audio_format(jellyfin_track),
             stream_type=StreamType.HTTP,
             duration=(

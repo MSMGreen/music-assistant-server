@@ -9,6 +9,7 @@ import pytest
 from aiojellyfin import Connection
 from aiojellyfin.session import SessionConfiguration
 from aiojellyfin.testing import FixtureBuilder
+from music_assistant_models.enums import MediaType
 from music_assistant_models.errors import MediaNotFoundError
 
 from music_assistant.mass import MusicAssistant
@@ -143,3 +144,28 @@ async def test_get_audiobook(
     assert book.name == BOOK_NAME
     with pytest.raises(MediaNotFoundError):
         await provider.get_audiobook("ffffffffffffffffffffffffffffffff")
+
+
+async def test_audiobook_stream_details(
+    mass: MusicAssistant, jellyfin_books_provider: ProviderConfig
+) -> None:
+    """An audiobook streams from Jellyfin, is seekable and knows its length."""
+    provider = _provider(mass, jellyfin_books_provider)
+    stream = await provider.get_stream_details(BOOK_ID, MediaType.AUDIOBOOK)
+    assert stream.duration == 55648
+    assert stream.can_seek
+    assert stream.allow_seek
+    assert stream.media_type == MediaType.AUDIOBOOK
+    assert BOOK_ID in stream.path
+    assert "apiKey=" in stream.path
+
+
+async def test_track_stream_details_unchanged(
+    mass: MusicAssistant, jellyfin_books_provider: ProviderConfig
+) -> None:
+    """Streaming a track still works and is still a track."""
+    provider = _provider(mass, jellyfin_books_provider)
+    track_id = "da9c458e425584680765ddc3a89cbc0c"
+    stream = await provider.get_stream_details(track_id, MediaType.TRACK)
+    assert stream.media_type == MediaType.TRACK
+    assert track_id in stream.path
