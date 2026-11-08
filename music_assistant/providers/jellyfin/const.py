@@ -68,6 +68,7 @@ AUDIOBOOK_PAGE_SIZE: Final = 100
 # how often positions changed by other Jellyfin clients are picked up; library sync is hours
 AUDIOBOOK_PROGRESS_POLL_SECONDS: Final = 300
 CACHE_KEY_SEEN_PROGRESS: Final = "audiobook_progress_seen"
+CACHE_KEY_KNOWN_TICKS: Final = "audiobook_known_ticks"
 CACHE_EXPIRATION_SEEN_PROGRESS: Final = 365 * 24 * 3600
 
 SUPPORTED_CONTAINER_FORMATS: Final = "ogg,flac,mp3,aac,mpeg,alac,wav,aiff,wma,m4a,m4b,dsf,opus,wv"

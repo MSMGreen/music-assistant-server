@@ -14,6 +14,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from aiohttp import ClientError
 from aiojellyfin import MediaLibrary as JellyMediaLibrary
 from aiojellyfin import NotFound, authenticate_by_name
+from aiojellyfin.session import NotFound as SessionNotFound
 from aiojellyfin.session import SessionConfiguration
 from music_assistant_models.enums import MediaType, ProviderFeature, StreamType
 from music_assistant_models.errors import LoginFailed, MediaNotFoundError
@@ -51,6 +52,7 @@ from .const import (
     AUDIOBOOK_PAGE_SIZE,
     AUDIOBOOK_PROGRESS_POLL_SECONDS,
     CACHE_EXPIRATION_SEEN_PROGRESS,
+    CACHE_KEY_KNOWN_TICKS,
     CACHE_KEY_SEEN_PROGRESS,
     COLLECTION_TYPE_BOOKS,
     COLLECTION_TYPE_MUSIC,
@@ -113,8 +115,12 @@ class JellyfinProvider(MusicProvider):
 
     async def handle_async_init(self) -> None:
         """Initialize provider(instance) with given configuration."""
-        # per audiobook, the position in Jellyfin we last read at play start or wrote ourselves
-        self._known_ticks: dict[str, int] = {}
+        # per audiobook, the position in Jellyfin we last read at play start or wrote ourselves.
+        # Kept over restarts, because a parked queue survives them and resumes without asking
+        # Jellyfin: its reports must still not overwrite a place another client moved on
+        self._known_ticks: dict[str, int] = dict(
+            await self.mass.cache.get(CACHE_KEY_KNOWN_TICKS, provider=self.instance_id, default={})
+        )
         # per audiobook, the [ticks, played] last reflected in Music Assistant's playlog. Kept
         # over restarts: pushing every book again would scramble which one was played last
         self._seen_progress: dict[str, list[Any]] = dict(
@@ -188,9 +194,12 @@ class JellyfinProvider(MusicProvider):
         """Pick up audiobook progress once, and schedule the next time."""
         try:
             await self._sync_audiobook_progress()
-        except (ClientError, TimeoutError, NotFound, KeyError, ValueError) as err:
-            self.logger.debug("Could not check audiobook progress: %s", err)
-        self._schedule_audiobook_progress_poll()
+        except Exception as err:
+            # anything unlisted would end the polling for good, with resume still working,
+            # which leaves "continue listening" quietly out of date until the next restart
+            self.logger.warning("Could not check audiobook progress: %s", err)
+        if not self.unloading:
+            self._schedule_audiobook_progress_poll()
 
     async def _sync_audiobook_progress(self) -> None:
         """
@@ -452,9 +461,15 @@ class JellyfinProvider(MusicProvider):
                         )
                     continue
                 try:
-                    yield parse_audiobook(self.instance_id, self._client, book)
+                    parsed = parse_audiobook(self.instance_id, self._client, book)
                 except (KeyError, ValueError) as err:
                     self.report_skipped_sync_item(MediaType.AUDIOBOOK, book.get(ITEM_KEY_ID), err)
+                    continue
+                # library sync writes any resume state it is given into the playlog, as played
+                # now. That would bump books with nobody listening, so only the poll reports it
+                parsed.resume_position_ms = None
+                parsed.fully_played = None
+                yield parsed
 
     async def get_audiobook(self, prov_audiobook_id: str) -> Audiobook:
         """Get full audiobook details by id."""
@@ -482,7 +497,7 @@ class JellyfinProvider(MusicProvider):
         user_data = book.get(ITEM_KEY_USER_DATA) or {}
         ticks = int(user_data.get(USER_DATA_KEY_POSITION_TICKS) or 0)
         played = bool(user_data.get(USER_DATA_KEY_PLAYED, False))
-        self._known_ticks[item_id] = ticks
+        await self._remember_known_ticks(item_id, ticks)
         if not ticks and not played:
             return False, 0, None
         return played, ticks // TICKS_PER_MS, utc()
@@ -517,7 +532,10 @@ class JellyfinProvider(MusicProvider):
         ticks = 0 if finished or marked_unplayed else int(position * TICKS_PER_SECOND)
         try:
             if not finished and not marked_unplayed and await self._moved_elsewhere(prov_item_id):
-                self.logger.debug("Not writing %s: moved by another client", prov_item_id)
+                self.logger.warning(
+                    "Not saving progress of %s: another client moved it since playback started",
+                    prov_item_id,
+                )
                 return
             await self._post_user_data(
                 prov_item_id,
@@ -530,11 +548,21 @@ class JellyfinProvider(MusicProvider):
         except (ClientError, TimeoutError, MediaNotFoundError) as err:
             self.logger.warning("Could not save progress of %s: %s", prov_item_id, err)
             return
-        self._known_ticks[prov_item_id] = ticks
+        await self._remember_known_ticks(prov_item_id, ticks)
         # already in the playlog, since that is where this report came from
         self._seen_progress[prov_item_id] = [ticks, finished]
         if not is_playing:
             await self._store_seen_progress()
+
+    async def _remember_known_ticks(self, item_id: str, ticks: int) -> None:
+        self._known_ticks[item_id] = ticks
+        await self.mass.cache.set(
+            CACHE_KEY_KNOWN_TICKS,
+            self._known_ticks,
+            expiration=CACHE_EXPIRATION_SEEN_PROGRESS,
+            provider=self.instance_id,
+            persistent=True,
+        )
 
     async def _moved_elsewhere(self, item_id: str) -> bool:
         """
@@ -610,7 +638,8 @@ class JellyfinProvider(MusicProvider):
                 f"/Users/{self._client._user_id}/Items/{item_id}",
                 params={"fields": ",".join(AUDIOBOOK_FIELDS), "enableUserData": "true"},
             )
-        except NotFound as err:
+        except (NotFound, SessionNotFound) as err:
+            # aiojellyfin raises its session's NotFound here, which is a different class
             raise MediaNotFoundError(f"Item {item_id} not found") from err
         if item.get(ITEM_KEY_TYPE) != ITEM_TYPE_AUDIOBOOK:
             raise MediaNotFoundError(f"Item {item_id} is not an audiobook")

@@ -7,6 +7,7 @@ from unittest import mock
 
 import aiohttp
 import pytest
+from aiojellyfin.session import NotFound as SessionNotFound
 from aiojellyfin.testing import FixtureBuilder
 from music_assistant_models.enums import MediaType
 from music_assistant_models.errors import MediaNotFoundError
@@ -554,3 +555,127 @@ async def test_post_user_data_sends_the_write_to_jellyfin(
     assert post.call_args.kwargs["json"] == {"PlaybackPositionTicks": 1}
     assert "TestAccessToken" in post.call_args.kwargs["headers"]["Authorization"]
     assert post.call_args.kwargs["raise_for_status"] is True
+
+
+async def test_guard_survives_provider_reload(
+    mass: MusicAssistant,
+    jellyfin_books_provider: ProviderConfig,
+    fixture_builder: FixtureBuilder,
+) -> None:
+    """A parked queue resumed after a restart must not rewind a place Volume moved on."""
+    first = _provider(mass, jellyfin_books_provider)
+    await first.get_resume_position(BOOK_ID, MediaType.AUDIOBOOK)
+    await mass.config._reload_provider(jellyfin_books_provider.instance_id)
+    fixture_builder.objects[BOOK_ID]["UserData"]["PlaybackPositionTicks"] = 180_000_000_000
+    second = _provider(mass, jellyfin_books_provider)
+    assert second is not first
+    with mock.patch.object(second, "_post_user_data", mock.AsyncMock()) as post:
+        await _on_played(mass, jellyfin_books_provider, position=3730, is_playing=True)
+    post.assert_not_awaited()
+
+
+async def test_own_write_during_playback_survives_reload(
+    mass: MusicAssistant,
+    jellyfin_books_provider: ProviderConfig,
+    fixture_builder: FixtureBuilder,
+) -> None:
+    """After a crash mid-playback, our own last write is not mistaken for another client's."""
+    first = _provider(mass, jellyfin_books_provider)
+    await first.get_resume_position(BOOK_ID, MediaType.AUDIOBOOK)
+    with mock.patch.object(first, "_post_user_data", mock.AsyncMock()):
+        await _on_played(mass, jellyfin_books_provider, position=3630, is_playing=True)
+    fixture_builder.objects[BOOK_ID]["UserData"]["PlaybackPositionTicks"] = 36_300_000_000
+    await mass.config._reload_provider(jellyfin_books_provider.instance_id)
+    second = _provider(mass, jellyfin_books_provider)
+    with mock.patch.object(second, "_post_user_data", mock.AsyncMock()) as post:
+        await _on_played(mass, jellyfin_books_provider, position=3660, is_playing=True)
+    post.assert_awaited_once()
+
+
+async def test_deleted_book_is_not_found_on_the_real_session_error(
+    mass: MusicAssistant, jellyfin_books_provider: ProviderConfig
+) -> None:
+    """The real session raises its own NotFound; the test fixture raises a different class."""
+    provider = _provider(mass, jellyfin_books_provider)
+    with (
+        mock.patch.object(
+            provider._client._session,
+            "get_json",
+            mock.AsyncMock(side_effect=SessionNotFound("gone")),
+        ),
+        pytest.raises(MediaNotFoundError),
+    ):
+        await provider.get_audiobook(BOOK_ID)
+
+
+async def test_on_played_survives_a_deleted_book(
+    mass: MusicAssistant, jellyfin_books_provider: ProviderConfig, writes: mock.AsyncMock
+) -> None:
+    """Reporting progress of a book deleted from Jellyfin is logged, not raised."""
+    provider = _provider(mass, jellyfin_books_provider)
+    await provider.get_resume_position(BOOK_ID, MediaType.AUDIOBOOK)
+    with mock.patch.object(
+        provider._client._session,
+        "get_json",
+        mock.AsyncMock(side_effect=SessionNotFound("gone")),
+    ):
+        await _on_played(mass, jellyfin_books_provider, position=4000, is_playing=True)
+    writes.assert_not_awaited()
+
+
+async def test_poll_survives_any_error_and_reschedules(
+    mass: MusicAssistant, jellyfin_books_provider: ProviderConfig
+) -> None:
+    """No error may silently end the polling until the next restart."""
+    provider = _provider(mass, jellyfin_books_provider)
+    with (
+        mock.patch.object(
+            provider, "_sync_audiobook_progress", mock.AsyncMock(side_effect=RuntimeError("db"))
+        ),
+        mock.patch.object(mass, "call_later") as call_later,
+    ):
+        await provider._poll_audiobook_progress()
+    call_later.assert_called_once()
+
+
+async def test_poll_does_not_reschedule_after_unload(
+    mass: MusicAssistant, jellyfin_books_provider: ProviderConfig
+) -> None:
+    """A poll in flight during a reload must not keep the old instance polling."""
+    provider = _provider(mass, jellyfin_books_provider)
+    provider.unloading = True
+    with (
+        mock.patch.object(provider, "_sync_audiobook_progress", mock.AsyncMock()),
+        mock.patch.object(mass, "call_later") as call_later,
+    ):
+        await provider._poll_audiobook_progress()
+    call_later.assert_not_called()
+
+
+async def test_dropped_report_is_visible_in_the_log(
+    mass: MusicAssistant,
+    jellyfin_books_provider: ProviderConfig,
+    fixture_builder: FixtureBuilder,
+    writes: mock.AsyncMock,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Listening that will not be saved must not disappear without a trace."""
+    caplog.set_level(logging.WARNING)
+    provider = _provider(mass, jellyfin_books_provider)
+    await provider.get_resume_position(BOOK_ID, MediaType.AUDIOBOOK)
+    fixture_builder.objects[BOOK_ID]["UserData"]["PlaybackPositionTicks"] = 90_000_000_000
+    await _on_played(mass, jellyfin_books_provider, position=3700, is_playing=True)
+    writes.assert_not_awaited()
+    assert [r for r in caplog.records if BOOK_ID in r.getMessage() and r.levelno == logging.WARNING]
+
+
+async def test_library_sync_leaves_the_playlog_to_the_poll(
+    mass: MusicAssistant,
+    jellyfin_books_provider: ProviderConfig,
+    fixture_builder: FixtureBuilder,
+) -> None:
+    """Library sync must not bump a book's recency: it would look played with nobody listening."""
+    await mass.webserver.auth.create_user(username="listener")
+    fixture_builder.objects[BOOK_ID]["UserData"]["PlaybackPositionTicks"] = 50_000_000_000
+    await _provider(mass, jellyfin_books_provider).sync_library(MediaType.AUDIOBOOK)
+    assert await mass.music.in_progress_items(all_users=True) == []
