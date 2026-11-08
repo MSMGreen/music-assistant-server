@@ -370,3 +370,171 @@ async def test_on_played_survives_jellyfin_being_down(
     writes.side_effect = aiohttp.ClientError("down")
     await _on_played(mass, jellyfin_books_provider, position=4000, is_playing=True)
     writes.assert_awaited_once()
+
+
+@pytest.fixture
+async def playlog(mass: MusicAssistant) -> AsyncGenerator[tuple[mock.AsyncMock, mock.AsyncMock]]:
+    """Capture what the provider pushes into Music Assistant's playlog."""
+    with (
+        mock.patch.object(mass.music, "mark_item_played", mock.AsyncMock()) as played,
+        mock.patch.object(mass.music, "mark_item_unplayed", mock.AsyncMock()) as unplayed,
+    ):
+        yield played, unplayed
+
+
+async def test_first_sync_pushes_books_with_progress(
+    mass: MusicAssistant,
+    jellyfin_books_provider: ProviderConfig,
+    playlog: tuple[mock.AsyncMock, mock.AsyncMock],
+) -> None:
+    """A book in progress in Jellyfin reaches the playlog; an untouched one does not."""
+    played, unplayed = playlog
+    await _provider(mass, jellyfin_books_provider)._sync_audiobook_progress()
+    played.assert_awaited_once()
+    assert played.await_args.args[0].name == BOOK_NAME
+    assert played.await_args.kwargs == {
+        "fully_played": False,
+        "seconds_played": 3600,
+        "user_initiated": False,
+        "provider_instance_id": jellyfin_books_provider.instance_id,
+    }
+    unplayed.assert_not_awaited()
+
+
+async def test_unchanged_books_not_pushed_again(
+    mass: MusicAssistant,
+    jellyfin_books_provider: ProviderConfig,
+    playlog: tuple[mock.AsyncMock, mock.AsyncMock],
+) -> None:
+    """A second pass with nothing changed must not bump any book's recency."""
+    played, _ = playlog
+    provider = _provider(mass, jellyfin_books_provider)
+    await provider._sync_audiobook_progress()
+    played.reset_mock()
+    await provider._sync_audiobook_progress()
+    played.assert_not_awaited()
+
+
+async def test_changed_book_pushed(
+    mass: MusicAssistant,
+    jellyfin_books_provider: ProviderConfig,
+    fixture_builder: FixtureBuilder,
+    playlog: tuple[mock.AsyncMock, mock.AsyncMock],
+) -> None:
+    """A position that moved in another app makes that book the most recent one."""
+    played, _ = playlog
+    provider = _provider(mass, jellyfin_books_provider)
+    await provider._sync_audiobook_progress()
+    played.reset_mock()
+    fixture_builder.objects[BOOK_ID]["UserData"]["PlaybackPositionTicks"] = 50_000_000_000
+    await provider._sync_audiobook_progress()
+    played.assert_awaited_once()
+    assert played.await_args.kwargs["seconds_played"] == 5000
+
+
+async def test_own_write_not_pushed_back(
+    mass: MusicAssistant,
+    jellyfin_books_provider: ProviderConfig,
+    fixture_builder: FixtureBuilder,
+    writes: mock.AsyncMock,
+    playlog: tuple[mock.AsyncMock, mock.AsyncMock],
+) -> None:
+    """A position we wrote ourselves is already known; seeing it again changes nothing."""
+    played, _ = playlog
+    provider = _provider(mass, jellyfin_books_provider)
+    await provider._sync_audiobook_progress()
+    played.reset_mock()
+    await _on_played(mass, jellyfin_books_provider, position=4000, is_playing=True)
+    fixture_builder.objects[BOOK_ID]["UserData"]["PlaybackPositionTicks"] = 40_000_000_000
+    await provider._sync_audiobook_progress()
+    played.assert_not_awaited()
+
+
+async def test_seen_positions_survive_restart(
+    mass: MusicAssistant,
+    jellyfin_books_provider: ProviderConfig,
+    playlog: tuple[mock.AsyncMock, mock.AsyncMock],
+) -> None:
+    """A restart must not re-push every book and scramble which one was last."""
+    played, _ = playlog
+    first = _provider(mass, jellyfin_books_provider)
+    await first._sync_audiobook_progress()
+    played.reset_mock()
+    await mass.config._reload_provider(jellyfin_books_provider.instance_id)
+    second = _provider(mass, jellyfin_books_provider)
+    assert second is not first
+    await second._sync_audiobook_progress()
+    played.assert_not_awaited()
+
+
+async def test_finished_and_reset_books(
+    mass: MusicAssistant,
+    jellyfin_books_provider: ProviderConfig,
+    fixture_builder: FixtureBuilder,
+    playlog: tuple[mock.AsyncMock, mock.AsyncMock],
+) -> None:
+    """Finishing a book elsewhere and marking it unplayed elsewhere both come through."""
+    played, unplayed = playlog
+    provider = _provider(mass, jellyfin_books_provider)
+    await provider._sync_audiobook_progress()
+    played.reset_mock()
+    user_data = fixture_builder.objects[BOOK_ID]["UserData"]
+    user_data.update({"PlaybackPositionTicks": 0, "Played": True})
+    await provider._sync_audiobook_progress()
+    played.assert_awaited_once()
+    assert played.await_args.kwargs["fully_played"] is True
+    user_data.update({"PlaybackPositionTicks": 0, "Played": False})
+    await provider._sync_audiobook_progress()
+    unplayed.assert_awaited_once()
+
+
+async def test_book_not_in_library_yet_is_retried(
+    mass: MusicAssistant,
+    jellyfin_books_provider: ProviderConfig,
+    playlog: tuple[mock.AsyncMock, mock.AsyncMock],
+) -> None:
+    """Progress seen before the book reaches the library is not lost."""
+    played, _ = playlog
+    provider = _provider(mass, jellyfin_books_provider)
+    with mock.patch.object(
+        mass.music, "get_library_item_by_prov_id", mock.AsyncMock(return_value=None)
+    ):
+        await provider._sync_audiobook_progress()
+    played.assert_not_awaited()
+    await provider._sync_audiobook_progress()
+    played.assert_awaited_once()
+
+
+async def test_poll_survives_jellyfin_being_down_and_reschedules(
+    mass: MusicAssistant, jellyfin_books_provider: ProviderConfig
+) -> None:
+    """Jellyfin being down skips one poll; the next one is still scheduled."""
+    provider = _provider(mass, jellyfin_books_provider)
+    with (
+        mock.patch.object(
+            provider, "_sync_audiobook_progress", mock.AsyncMock(side_effect=aiohttp.ClientError())
+        ),
+        mock.patch.object(mass, "call_later") as call_later,
+    ):
+        await provider._poll_audiobook_progress()
+    call_later.assert_called_once()
+    assert call_later.call_args.args[0] == 300
+
+
+async def test_own_write_survives_restart(
+    mass: MusicAssistant,
+    jellyfin_books_provider: ProviderConfig,
+    fixture_builder: FixtureBuilder,
+    playlog: tuple[mock.AsyncMock, mock.AsyncMock],
+) -> None:
+    """Stopping here and restarting must not make this book look newly played elsewhere."""
+    played, _ = playlog
+    provider = _provider(mass, jellyfin_books_provider)
+    await provider._sync_audiobook_progress()
+    played.reset_mock()
+    with mock.patch.object(provider, "_post_user_data", mock.AsyncMock()):
+        await _on_played(mass, jellyfin_books_provider, position=4000)
+    fixture_builder.objects[BOOK_ID]["UserData"]["PlaybackPositionTicks"] = 40_000_000_000
+    await mass.config._reload_provider(jellyfin_books_provider.instance_id)
+    await _provider(mass, jellyfin_books_provider)._sync_audiobook_progress()
+    played.assert_not_awaited()
