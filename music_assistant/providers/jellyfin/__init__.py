@@ -8,7 +8,7 @@ from asyncio import TaskGroup
 from collections import Counter
 from collections.abc import AsyncGenerator
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from aiohttp import ClientError
@@ -118,7 +118,9 @@ class JellyfinProvider(MusicProvider):
         # per audiobook, the [ticks, played] last reflected in Music Assistant's playlog. Kept
         # over restarts: pushing every book again would scramble which one was played last
         self._seen_progress: dict[str, list[Any]] = dict(
-            await self.mass.cache.get(CACHE_KEY_SEEN_PROGRESS, provider=self.instance_id, default={})
+            await self.mass.cache.get(
+                CACHE_KEY_SEEN_PROGRESS, provider=self.instance_id, default={}
+            )
         )
         username = str(self.get_setup_value(CONF_USERNAME))
 
@@ -238,7 +240,11 @@ class JellyfinProvider(MusicProvider):
             await self.mass.music.mark_item_played(
                 library_item,
                 fully_played=played,
-                seconds_played=library_item.duration if played else ticks // TICKS_PER_SECOND,
+                seconds_played=(
+                    cast("Audiobook", library_item).duration
+                    if played
+                    else ticks // TICKS_PER_SECOND
+                ),
                 user_initiated=False,
                 provider_instance_id=self.instance_id,
             )
@@ -550,9 +556,8 @@ class JellyfinProvider(MusicProvider):
         :param item_id: Id of the item.
         :param data: The user data fields to set; other fields are left alone.
         """
-        http_session = self.mass.http_session if self._verify_ssl else self.mass.http_session_no_ssl
         config = self._client._session_config
-        async with http_session.post(
+        async with config.session.post(
             f"{self._client.base_url}/UserItems/{item_id}/UserData",
             params={"userId": self._client._user_id},
             json=data,
@@ -560,6 +565,7 @@ class JellyfinProvider(MusicProvider):
                 "User-Agent": config.user_agent,
                 "Authorization": config.authentication_header(self._client._access_token),
             },
+            ssl=config.verify_ssl,
             raise_for_status=True,
         ):
             pass

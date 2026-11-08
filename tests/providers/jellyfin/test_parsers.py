@@ -179,7 +179,7 @@ async def test_parse_audiobook(connection: Connection) -> None:
     raw = await _load_raw(AUDIOBOOK_FIXTURES / "discount_dan.json")
     book = parse_audiobook("xx-instance-id", connection, raw)
     assert book.item_id == "c022338cd4fa4f51de8ae471c7e978d8"
-    assert book.name == "Discount Dan - Discount Dan’s Backroom Bargains, Book 1"
+    assert book.name == "Discount Dan - Discount Dan\u2019s Backroom Bargains, Book 1"
     assert book.sort_name.startswith("0001 - Discount Dan")
     assert list(book.authors) == ["James Hunter"]
     assert list(book.narrators) == ["Steve Campbell"]

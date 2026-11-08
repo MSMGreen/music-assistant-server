@@ -7,22 +7,22 @@ from unittest import mock
 
 import aiohttp
 import pytest
-from aiojellyfin import Connection
-from aiojellyfin.session import SessionConfiguration
 from aiojellyfin.testing import FixtureBuilder
 from music_assistant_models.enums import MediaType
 from music_assistant_models.errors import MediaNotFoundError
-from music_assistant_models.media_items import Audiobook
 
 from music_assistant.mass import MusicAssistant
 from music_assistant.providers.jellyfin import JellyfinProvider
 from tests.common import get_fixtures_dir, wait_for_sync_completion
 
 if TYPE_CHECKING:
+    from aiojellyfin import Connection
+    from aiojellyfin.session import SessionConfiguration
     from music_assistant_models.config_entries import ProviderConfig
+    from music_assistant_models.media_items import Audiobook
 
 BOOK_ID = "c022338cd4fa4f51de8ae471c7e978d8"
-BOOK_NAME = "Discount Dan - Discount Dan’s Backroom Bargains, Book 1"
+BOOK_NAME = "Discount Dan - Discount Dan\u2019s Backroom Bargains, Book 1"
 NO_CHAPTERS_NAME = "A Book Without Chapters"
 BOOKS_FOLDER = "books-folder"
 BOOKS_FOLDER_ITEM = {"Id": BOOKS_FOLDER, "Name": "Books", "CollectionType": "books"}
@@ -96,9 +96,8 @@ def _provider(mass: MusicAssistant, config: ProviderConfig) -> JellyfinProvider:
     return provider
 
 
-async def test_audiobooks_synced(
-    mass: MusicAssistant, jellyfin_books_provider: ProviderConfig
-) -> None:
+@pytest.mark.usefixtures("jellyfin_books_provider")
+async def test_audiobooks_synced(mass: MusicAssistant) -> None:
     """Single-file audiobooks are in the library; ebooks and multi-file parts are not."""
     books = await mass.music.audiobooks.library_items()
     assert {b.name for b in books} == {BOOK_NAME, NO_CHAPTERS_NAME}
@@ -129,17 +128,14 @@ async def test_multifile_book_skipped_with_warning(
     assert warnings[0].levelno == logging.WARNING
 
 
-async def test_music_still_synced(
-    mass: MusicAssistant, jellyfin_books_provider: ProviderConfig
-) -> None:
+@pytest.mark.usefixtures("jellyfin_books_provider")
+async def test_music_still_synced(mass: MusicAssistant) -> None:
     """Adding books does not disturb the music library."""
     tracks = await mass.music.tracks.library_items(search="where the bands are")
     assert tracks
 
 
-async def test_get_audiobook(
-    mass: MusicAssistant, jellyfin_books_provider: ProviderConfig
-) -> None:
+async def test_get_audiobook(mass: MusicAssistant, jellyfin_books_provider: ProviderConfig) -> None:
     """A single audiobook can be fetched by id; an unknown id is not found."""
     provider = _provider(mass, jellyfin_books_provider)
     book = await provider.get_audiobook(BOOK_ID)
@@ -207,9 +203,8 @@ async def test_resume_position_nothing_in_jellyfin_has_no_timestamp(
     )
 
 
-async def test_rewinding_in_volume_beats_a_higher_local_position(
-    mass: MusicAssistant, jellyfin_books_provider: ProviderConfig
-) -> None:
+@pytest.mark.usefixtures("jellyfin_books_provider")
+async def test_rewinding_in_volume_beats_a_higher_local_position(mass: MusicAssistant) -> None:
     """Someone rewound in Volume: playback resumes there, not at the later local position."""
     book = await _library_book(mass, BOOK_NAME)
     # the playlog is per user: without one there would be no local position to compete with
@@ -224,9 +219,8 @@ async def test_rewinding_in_volume_beats_a_higher_local_position(
     assert await mass.music.get_resume_position(book, userid=user.user_id) == (False, 3_600_000)
 
 
-async def test_local_position_kept_when_jellyfin_has_none(
-    mass: MusicAssistant, jellyfin_books_provider: ProviderConfig
-) -> None:
+@pytest.mark.usefixtures("jellyfin_books_provider")
+async def test_local_position_kept_when_jellyfin_has_none(mass: MusicAssistant) -> None:
     """Jellyfin holding nothing must not throw away the place Music Assistant knows."""
     book = await _library_book(mass, NO_CHAPTERS_NAME)
     # the playlog is per user: without one there would be no local position to compete with
@@ -432,11 +426,11 @@ async def test_changed_book_pushed(
     assert played.await_args.kwargs["seconds_played"] == 5000
 
 
+@pytest.mark.usefixtures("writes")
 async def test_own_write_not_pushed_back(
     mass: MusicAssistant,
     jellyfin_books_provider: ProviderConfig,
     fixture_builder: FixtureBuilder,
-    writes: mock.AsyncMock,
     playlog: tuple[mock.AsyncMock, mock.AsyncMock],
 ) -> None:
     """A position we wrote ourselves is already known; seeing it again changes nothing."""
@@ -538,3 +532,25 @@ async def test_own_write_survives_restart(
     await mass.config._reload_provider(jellyfin_books_provider.instance_id)
     await _provider(mass, jellyfin_books_provider)._sync_audiobook_progress()
     played.assert_not_awaited()
+
+
+async def test_post_user_data_sends_the_write_to_jellyfin(
+    mass: MusicAssistant, jellyfin_books_provider: ProviderConfig
+) -> None:
+    """The write goes to the signed-in user's data for the item, with their token."""
+    provider = _provider(mass, jellyfin_books_provider)
+    response = mock.MagicMock()
+    response.__aenter__ = mock.AsyncMock(return_value=mock.Mock())
+    response.__aexit__ = mock.AsyncMock(return_value=None)
+    with (
+        mock.patch.object(mass.http_session, "post", return_value=response) as post_verified,
+        mock.patch.object(mass.http_session_no_ssl, "post", return_value=response) as post_no_ssl,
+    ):
+        await provider._post_user_data(BOOK_ID, {"PlaybackPositionTicks": 1})
+    post = post_verified if post_verified.called else post_no_ssl
+    post.assert_called_once()
+    assert post.call_args.args[0] == f"http://localhost/UserItems/{BOOK_ID}/UserData"
+    assert post.call_args.kwargs["params"] == {"userId": "TestUserId"}
+    assert post.call_args.kwargs["json"] == {"PlaybackPositionTicks": 1}
+    assert "TestAccessToken" in post.call_args.kwargs["headers"]["Authorization"]
+    assert post.call_args.kwargs["raise_for_status"] is True
