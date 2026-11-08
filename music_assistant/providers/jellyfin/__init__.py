@@ -167,108 +167,6 @@ class JellyfinProvider(MusicProvider):
         except Exception as err:
             raise LoginFailed(f"Authentication failed: {err}") from err
 
-    async def loaded_in_mass(self) -> None:
-        """Start picking up audiobook progress from other Jellyfin clients."""
-        self._schedule_audiobook_progress_poll()
-
-    async def unload(self, is_removed: bool = False) -> None:
-        """
-        Stop picking up audiobook progress.
-
-        :param is_removed: Whether the provider is removed from the configuration.
-        """
-        self.mass.cancel_timer(self._progress_poll_task_id)
-
-    @property
-    def _progress_poll_task_id(self) -> str:
-        return f"jellyfin_audiobook_progress_{self.instance_id}"
-
-    def _schedule_audiobook_progress_poll(self) -> None:
-        self.mass.call_later(
-            AUDIOBOOK_PROGRESS_POLL_SECONDS,
-            self._poll_audiobook_progress,
-            task_id=self._progress_poll_task_id,
-        )
-
-    async def _poll_audiobook_progress(self) -> None:
-        """Pick up audiobook progress once, and schedule the next time."""
-        try:
-            await self._sync_audiobook_progress()
-        except Exception as err:
-            # anything unlisted would end the polling for good, with resume still working,
-            # which leaves "continue listening" quietly out of date until the next restart
-            self.logger.warning("Could not check audiobook progress: %s", err)
-        if not self.unloading:
-            self._schedule_audiobook_progress_poll()
-
-    async def _sync_audiobook_progress(self) -> None:
-        """
-        Reflect audiobook positions changed in other Jellyfin clients in the playlog.
-
-        This is what makes a book listened to elsewhere the most recent one in Music Assistant.
-        Only changes are pushed, because each push counts as playing the book now.
-        """
-        changed = False
-        for library in await self._get_book_libraries():
-            async for book in self._iter_raw_audiobooks(library[ITEM_KEY_ID]):
-                changed = await self._push_audiobook_progress(book) or changed
-        if changed:
-            await self._store_seen_progress()
-
-    async def _push_audiobook_progress(self, book: dict[str, Any]) -> bool:
-        """
-        Push the progress of one book to the playlog if it changed.
-
-        :param book: The raw Jellyfin item.
-        :return: Whether the seen progress changed.
-        """
-        item_id = book[ITEM_KEY_ID]
-        user_data = book.get(ITEM_KEY_USER_DATA) or {}
-        ticks = int(user_data.get(USER_DATA_KEY_POSITION_TICKS) or 0)
-        played = bool(user_data.get(USER_DATA_KEY_PLAYED, False))
-        seen = self._seen_progress.get(item_id)
-        if seen == [ticks, played]:
-            return False
-        untouched = not ticks and not played
-        if seen is None and untouched:
-            self._seen_progress[item_id] = [ticks, played]
-            return True
-        library_item = await self.mass.music.get_library_item_by_prov_id(
-            media_type=MediaType.AUDIOBOOK,
-            item_id=item_id,
-            provider_instance_id_or_domain=self.instance_id,
-        )
-        if library_item is None:
-            # not synced yet (or skipped): stays unseen, so it is tried again next time
-            return False
-        if untouched:
-            await self.mass.music.mark_item_unplayed(
-                library_item, provider_instance_id=self.instance_id
-            )
-        else:
-            await self.mass.music.mark_item_played(
-                library_item,
-                fully_played=played,
-                seconds_played=(
-                    cast("Audiobook", library_item).duration
-                    if played
-                    else ticks // TICKS_PER_SECOND
-                ),
-                user_initiated=False,
-                provider_instance_id=self.instance_id,
-            )
-        self._seen_progress[item_id] = [ticks, played]
-        return True
-
-    async def _store_seen_progress(self) -> None:
-        await self.mass.cache.set(
-            CACHE_KEY_SEEN_PROGRESS,
-            self._seen_progress,
-            expiration=CACHE_EXPIRATION_SEEN_PROGRESS,
-            provider=self.instance_id,
-            persistent=True,
-        )
-
     @property
     def is_streaming_provider(self) -> bool:
         """Return True if the provider is a streaming provider."""
@@ -281,6 +179,131 @@ class JellyfinProvider(MusicProvider):
         :param path: Artwork URL or provider path to resolve.
         """
         return _normalize_jellyfin_media_url(path)
+
+    async def loaded_in_mass(self) -> None:
+        """Start picking up audiobook progress from other Jellyfin clients."""
+        self._schedule_audiobook_progress_poll()
+
+    async def unload(self, is_removed: bool = False) -> None:
+        """
+        Stop picking up audiobook progress.
+
+        :param is_removed: Whether the provider is removed from the configuration.
+        """
+        self.mass.cancel_timer(self._progress_poll_task_id)
+
+    async def get_library_audiobooks(self) -> AsyncGenerator[Audiobook]:
+        """Retrieve all single-file audiobooks from the Jellyfin books libraries."""
+        # A book made of several files shows up in Jellyfin as several AudioBook items sharing
+        # a parent folder. Music Assistant could only play those as unrelated books, each with
+        # its own resume point, so they are skipped.
+        for library in await self._get_book_libraries():
+            books = [book async for book in self._iter_raw_audiobooks(library[ITEM_KEY_ID])]
+            per_parent = Counter(book.get(ITEM_KEY_PARENT_ID) for book in books)
+            warned: set[str] = set()
+            for book in books:
+                parent = book.get(ITEM_KEY_PARENT_ID)
+                if parent and per_parent[parent] > 1:
+                    if parent not in warned:
+                        warned.add(parent)
+                        self.logger.warning(
+                            "Skipping multi-file audiobook in folder %s: %s files",
+                            parent,
+                            per_parent[parent],
+                        )
+                    continue
+                try:
+                    parsed = parse_audiobook(self.instance_id, self._client, book)
+                except (KeyError, ValueError) as err:
+                    self.report_skipped_sync_item(MediaType.AUDIOBOOK, book.get(ITEM_KEY_ID), err)
+                    continue
+                # library sync writes any resume state it is given into the playlog, as played
+                # now. That would bump books with nobody listening, so only the poll reports it
+                parsed.resume_position_ms = None
+                parsed.fully_played = None
+                yield parsed
+
+    async def get_audiobook(self, prov_audiobook_id: str) -> Audiobook:
+        """Get full audiobook details by id."""
+        book = await self._get_raw_audiobook(prov_audiobook_id)
+        return parse_audiobook(self.instance_id, self._client, book)
+
+    async def get_resume_position(
+        self, item_id: str, media_type: MediaType
+    ) -> tuple[bool, int, datetime | None]:
+        """
+        Get the resume point of an audiobook from Jellyfin.
+
+        :param item_id: Id of the audiobook.
+        :param media_type: The media type of the item.
+        """
+        if media_type != MediaType.AUDIOBOOK:
+            raise NotImplementedError
+        book = await self._get_raw_audiobook(item_id)
+        user_data = book.get(ITEM_KEY_USER_DATA) or {}
+        ticks = int(user_data.get(USER_DATA_KEY_POSITION_TICKS) or 0)
+        played = bool(user_data.get(USER_DATA_KEY_PLAYED, False))
+        await self._remember_known_ticks(item_id, ticks)
+        # Jellyfin holds the one shared place in a book, which other clients move too, mostly
+        # without recording when. Without a newer timestamp Music Assistant takes the higher of
+        # its own position and this one, which would ignore a rewind in another app, so a position
+        # Jellyfin holds is reported as current. When it holds nothing there is no timestamp, so
+        # a place only Music Assistant knows is kept.
+        if not ticks and not played:
+            return False, 0, None
+        return played, ticks // TICKS_PER_MS, utc()
+
+    async def on_played(
+        self,
+        media_type: MediaType,
+        prov_item_id: str,
+        fully_played: bool,
+        position: int,
+        media_item: MediaItemType,
+        is_playing: bool = False,
+    ) -> None:
+        """
+        Write the progress of an audiobook back to Jellyfin.
+
+        :param media_type: The media type of the played item.
+        :param prov_item_id: Id of the played item.
+        :param fully_played: Whether the item was played to its end.
+        :param position: Last known position in seconds.
+        :param media_item: The played item.
+        :param is_playing: Whether the item is still playing.
+        """
+        if media_type != MediaType.AUDIOBOOK:
+            return
+        # the last seconds of a book count as fully played while they are still playing
+        finished = fully_played and not is_playing
+        marked_unplayed = not fully_played and not position and not is_playing
+        if not finished and not marked_unplayed and not position:
+            # a zero position during playback means nothing, and would wipe the shared place
+            return
+        ticks = 0 if finished or marked_unplayed else int(position * TICKS_PER_SECOND)
+        try:
+            if not finished and not marked_unplayed and await self._moved_elsewhere(prov_item_id):
+                self.logger.warning(
+                    "Not saving progress of %s: another client moved it since playback started",
+                    prov_item_id,
+                )
+                return
+            await self._post_user_data(
+                prov_item_id,
+                {
+                    USER_DATA_KEY_POSITION_TICKS: ticks,
+                    USER_DATA_KEY_PLAYED: finished,
+                    USER_DATA_KEY_LAST_PLAYED: utc().isoformat(),
+                },
+            )
+        except (ClientError, TimeoutError, MediaNotFoundError) as err:
+            self.logger.warning("Could not save progress of %s: %s", prov_item_id, err)
+            return
+        await self._remember_known_ticks(prov_item_id, ticks)
+        # already in the playlog, since that is where this report came from
+        self._seen_progress[prov_item_id] = [ticks, finished]
+        if not is_playing:
+            await self._store_seen_progress()
 
     async def _search_track(self, search_query: str, limit: int) -> list[Track]:
         resultset = (
@@ -436,223 +459,6 @@ class JellyfinProvider(MusicProvider):
                         yield parse_playlist(self.instance_id, self._client, playlist)
                 else:  # emby playlists are only audio type
                     yield parse_playlist(self.instance_id, self._client, playlist)
-
-    async def get_library_audiobooks(self) -> AsyncGenerator[Audiobook]:
-        """
-        Retrieve all single-file audiobooks from the Jellyfin books libraries.
-
-        A book made of several files shows up in Jellyfin as several AudioBook items sharing
-        a parent folder. Music Assistant could only play those as unrelated books, each with
-        its own resume point, so they are skipped.
-        """
-        for library in await self._get_book_libraries():
-            books = [book async for book in self._iter_raw_audiobooks(library[ITEM_KEY_ID])]
-            per_parent = Counter(book.get(ITEM_KEY_PARENT_ID) for book in books)
-            warned: set[str] = set()
-            for book in books:
-                parent = book.get(ITEM_KEY_PARENT_ID)
-                if parent and per_parent[parent] > 1:
-                    if parent not in warned:
-                        warned.add(parent)
-                        self.logger.warning(
-                            "Skipping multi-file audiobook in folder %s: %s files",
-                            parent,
-                            per_parent[parent],
-                        )
-                    continue
-                try:
-                    parsed = parse_audiobook(self.instance_id, self._client, book)
-                except (KeyError, ValueError) as err:
-                    self.report_skipped_sync_item(MediaType.AUDIOBOOK, book.get(ITEM_KEY_ID), err)
-                    continue
-                # library sync writes any resume state it is given into the playlog, as played
-                # now. That would bump books with nobody listening, so only the poll reports it
-                parsed.resume_position_ms = None
-                parsed.fully_played = None
-                yield parsed
-
-    async def get_audiobook(self, prov_audiobook_id: str) -> Audiobook:
-        """Get full audiobook details by id."""
-        book = await self._get_raw_audiobook(prov_audiobook_id)
-        return parse_audiobook(self.instance_id, self._client, book)
-
-    async def get_resume_position(
-        self, item_id: str, media_type: MediaType
-    ) -> tuple[bool, int, datetime | None]:
-        """
-        Get the resume point of an audiobook from Jellyfin.
-
-        Jellyfin holds the household's one shared place in a book, which other clients move too,
-        and most of them do not record when. Music Assistant takes the higher of its own position
-        and this one unless this one has a newer timestamp, which would ignore a rewind in another
-        app. So a position Jellyfin holds is reported as current. When it holds nothing there is
-        no timestamp, so a place only Music Assistant knows is kept.
-
-        :param item_id: Id of the audiobook.
-        :param media_type: The media type of the item.
-        """
-        if media_type != MediaType.AUDIOBOOK:
-            raise NotImplementedError
-        book = await self._get_raw_audiobook(item_id)
-        user_data = book.get(ITEM_KEY_USER_DATA) or {}
-        ticks = int(user_data.get(USER_DATA_KEY_POSITION_TICKS) or 0)
-        played = bool(user_data.get(USER_DATA_KEY_PLAYED, False))
-        await self._remember_known_ticks(item_id, ticks)
-        if not ticks and not played:
-            return False, 0, None
-        return played, ticks // TICKS_PER_MS, utc()
-
-    async def on_played(
-        self,
-        media_type: MediaType,
-        prov_item_id: str,
-        fully_played: bool,
-        position: int,
-        media_item: MediaItemType,
-        is_playing: bool = False,
-    ) -> None:
-        """
-        Write the progress of an audiobook back to Jellyfin.
-
-        :param media_type: The media type of the played item.
-        :param prov_item_id: Id of the played item.
-        :param fully_played: Whether the item was played to its end.
-        :param position: Last known position in seconds.
-        :param media_item: The played item.
-        :param is_playing: Whether the item is still playing.
-        """
-        if media_type != MediaType.AUDIOBOOK:
-            return
-        # the last seconds of a book count as fully played while they are still playing
-        finished = fully_played and not is_playing
-        marked_unplayed = not fully_played and not position and not is_playing
-        if not finished and not marked_unplayed and not position:
-            # a zero position during playback means nothing, and would wipe the shared place
-            return
-        ticks = 0 if finished or marked_unplayed else int(position * TICKS_PER_SECOND)
-        try:
-            if not finished and not marked_unplayed and await self._moved_elsewhere(prov_item_id):
-                self.logger.warning(
-                    "Not saving progress of %s: another client moved it since playback started",
-                    prov_item_id,
-                )
-                return
-            await self._post_user_data(
-                prov_item_id,
-                {
-                    USER_DATA_KEY_POSITION_TICKS: ticks,
-                    USER_DATA_KEY_PLAYED: finished,
-                    USER_DATA_KEY_LAST_PLAYED: utc().isoformat(),
-                },
-            )
-        except (ClientError, TimeoutError, MediaNotFoundError) as err:
-            self.logger.warning("Could not save progress of %s: %s", prov_item_id, err)
-            return
-        await self._remember_known_ticks(prov_item_id, ticks)
-        # already in the playlog, since that is where this report came from
-        self._seen_progress[prov_item_id] = [ticks, finished]
-        if not is_playing:
-            await self._store_seen_progress()
-
-    async def _remember_known_ticks(self, item_id: str, ticks: int) -> None:
-        self._known_ticks[item_id] = ticks
-        await self.mass.cache.set(
-            CACHE_KEY_KNOWN_TICKS,
-            self._known_ticks,
-            expiration=CACHE_EXPIRATION_SEEN_PROGRESS,
-            provider=self.instance_id,
-            persistent=True,
-        )
-
-    async def _moved_elsewhere(self, item_id: str) -> bool:
-        """
-        Return whether another client moved the position since we last read or wrote it.
-
-        :param item_id: Id of the audiobook.
-        """
-        known = self._known_ticks.get(item_id)
-        if known is None:
-            return False
-        book = await self._get_raw_audiobook(item_id)
-        user_data = book.get(ITEM_KEY_USER_DATA) or {}
-        return int(user_data.get(USER_DATA_KEY_POSITION_TICKS) or 0) != known
-
-    async def _post_user_data(self, item_id: str, data: dict[str, Any]) -> None:
-        """
-        Update the user data of an item for the signed-in user.
-
-        :param item_id: Id of the item.
-        :param data: The user data fields to set; other fields are left alone.
-        """
-        config = self._client._session_config
-        async with config.session.post(
-            f"{self._client.base_url}/UserItems/{item_id}/UserData",
-            params={"userId": self._client._user_id},
-            json=data,
-            headers={
-                "User-Agent": config.user_agent,
-                "Authorization": config.authentication_header(self._client._access_token),
-            },
-            ssl=config.verify_ssl,
-            raise_for_status=True,
-        ):
-            pass
-
-    async def _iter_raw_audiobooks(self, library_id: str) -> AsyncGenerator[dict[str, Any]]:
-        """
-        Yield the raw AudioBook items of a library.
-
-        Raw JSON on purpose: aiojellyfin's typed decoders lose People and Chapters.
-
-        :param library_id: Id of the Jellyfin library.
-        """
-        offset = 0
-        while True:
-            page = await self._client._session.get_json(
-                "/Items",
-                params={
-                    "parentId": library_id,
-                    "includeItemTypes": ITEM_TYPE_AUDIOBOOK,
-                    "recursive": "true",
-                    "enableUserData": "true",
-                    "fields": ",".join(AUDIOBOOK_FIELDS),
-                    "limit": str(AUDIOBOOK_PAGE_SIZE),
-                    "startIndex": str(offset),
-                },
-            )
-            for book in page["Items"]:
-                yield book
-            offset += AUDIOBOOK_PAGE_SIZE
-            if offset >= page["TotalRecordCount"]:
-                return
-
-    async def _get_raw_audiobook(self, item_id: str) -> dict[str, Any]:
-        """
-        Return the raw item of an audiobook.
-
-        :param item_id: Id of the audiobook.
-        :raises MediaNotFoundError: If there is no such item, or it is not an audiobook.
-        """
-        try:
-            item = await self._client._session.get_json(
-                f"/Users/{self._client._user_id}/Items/{item_id}",
-                params={"fields": ",".join(AUDIOBOOK_FIELDS), "enableUserData": "true"},
-            )
-        except (NotFound, SessionNotFound) as err:
-            # aiojellyfin raises its session's NotFound here, which is a different class
-            raise MediaNotFoundError(f"Item {item_id} not found") from err
-        if item.get(ITEM_KEY_TYPE) != ITEM_TYPE_AUDIOBOOK:
-            raise MediaNotFoundError(f"Item {item_id} is not an audiobook")
-        return item
-
-    async def _get_book_libraries(self) -> list[JellyMediaLibrary]:
-        """Return all books libraries the user has access to."""
-        response = await self._client.get_media_folders()
-        return [
-            library
-            for library in response["Items"]
-            if library.get(ITEM_KEY_COLLECTION_TYPE) == COLLECTION_TYPE_BOOKS
-        ]
 
     async def get_album(self, prov_album_id: str) -> Album:
         """Get full album details by id."""
@@ -820,6 +626,196 @@ class JellyfinProvider(MusicProvider):
             if library.get(ITEM_KEY_COLLECTION_TYPE) == COLLECTION_TYPE_PLAYLISTS:
                 result.append(library)
         return result
+
+    @property
+    def _progress_poll_task_id(self) -> str:
+        return f"jellyfin_audiobook_progress_{self.instance_id}"
+
+    def _schedule_audiobook_progress_poll(self) -> None:
+        self.mass.call_later(
+            AUDIOBOOK_PROGRESS_POLL_SECONDS,
+            self._poll_audiobook_progress,
+            task_id=self._progress_poll_task_id,
+        )
+
+    async def _poll_audiobook_progress(self) -> None:
+        """Pick up audiobook progress once, and schedule the next time."""
+        try:
+            await self._sync_audiobook_progress()
+        except Exception as err:
+            # anything unlisted would end the polling for good, with resume still working,
+            # which leaves "continue listening" quietly out of date until the next restart
+            self.logger.warning("Could not check audiobook progress: %s", err)
+        if not self.unloading:
+            self._schedule_audiobook_progress_poll()
+
+    async def _sync_audiobook_progress(self) -> None:
+        """
+        Reflect audiobook positions changed in other Jellyfin clients in the playlog.
+
+        This is what makes a book listened to elsewhere the most recent one in Music Assistant.
+        Only changes are pushed, because each push counts as playing the book now.
+        """
+        changed = False
+        for library in await self._get_book_libraries():
+            async for book in self._iter_raw_audiobooks(library[ITEM_KEY_ID]):
+                changed = await self._push_audiobook_progress(book) or changed
+        if changed:
+            await self._store_seen_progress()
+
+    async def _push_audiobook_progress(self, book: dict[str, Any]) -> bool:
+        """
+        Push the progress of one book to the playlog if it changed.
+
+        :param book: The raw Jellyfin item.
+        :return: Whether the seen progress changed.
+        """
+        item_id = book[ITEM_KEY_ID]
+        user_data = book.get(ITEM_KEY_USER_DATA) or {}
+        ticks = int(user_data.get(USER_DATA_KEY_POSITION_TICKS) or 0)
+        played = bool(user_data.get(USER_DATA_KEY_PLAYED, False))
+        seen = self._seen_progress.get(item_id)
+        if seen == [ticks, played]:
+            return False
+        untouched = not ticks and not played
+        if seen is None and untouched:
+            self._seen_progress[item_id] = [ticks, played]
+            return True
+        library_item = await self.mass.music.get_library_item_by_prov_id(
+            media_type=MediaType.AUDIOBOOK,
+            item_id=item_id,
+            provider_instance_id_or_domain=self.instance_id,
+        )
+        if library_item is None:
+            # not synced yet (or skipped): stays unseen, so it is tried again next time
+            return False
+        if untouched:
+            await self.mass.music.mark_item_unplayed(
+                library_item, provider_instance_id=self.instance_id
+            )
+        else:
+            await self.mass.music.mark_item_played(
+                library_item,
+                fully_played=played,
+                seconds_played=(
+                    cast("Audiobook", library_item).duration
+                    if played
+                    else ticks // TICKS_PER_SECOND
+                ),
+                user_initiated=False,
+                provider_instance_id=self.instance_id,
+            )
+        self._seen_progress[item_id] = [ticks, played]
+        return True
+
+    async def _store_seen_progress(self) -> None:
+        await self.mass.cache.set(
+            CACHE_KEY_SEEN_PROGRESS,
+            self._seen_progress,
+            expiration=CACHE_EXPIRATION_SEEN_PROGRESS,
+            provider=self.instance_id,
+            persistent=True,
+        )
+
+    async def _remember_known_ticks(self, item_id: str, ticks: int) -> None:
+        self._known_ticks[item_id] = ticks
+        await self.mass.cache.set(
+            CACHE_KEY_KNOWN_TICKS,
+            self._known_ticks,
+            expiration=CACHE_EXPIRATION_SEEN_PROGRESS,
+            provider=self.instance_id,
+            persistent=True,
+        )
+
+    async def _moved_elsewhere(self, item_id: str) -> bool:
+        """
+        Return whether another client moved the position since we last read or wrote it.
+
+        :param item_id: Id of the audiobook.
+        """
+        known = self._known_ticks.get(item_id)
+        if known is None:
+            return False
+        book = await self._get_raw_audiobook(item_id)
+        user_data = book.get(ITEM_KEY_USER_DATA) or {}
+        return int(user_data.get(USER_DATA_KEY_POSITION_TICKS) or 0) != known
+
+    async def _post_user_data(self, item_id: str, data: dict[str, Any]) -> None:
+        """
+        Update the user data of an item for the signed-in user.
+
+        :param item_id: Id of the item.
+        :param data: The user data fields to set; other fields are left alone.
+        """
+        config = self._client._session_config
+        async with config.session.post(
+            f"{self._client.base_url}/UserItems/{item_id}/UserData",
+            params={"userId": self._client._user_id},
+            json=data,
+            headers={
+                "User-Agent": config.user_agent,
+                "Authorization": config.authentication_header(self._client._access_token),
+            },
+            ssl=config.verify_ssl,
+            raise_for_status=True,
+        ):
+            pass
+
+    async def _iter_raw_audiobooks(self, library_id: str) -> AsyncGenerator[dict[str, Any]]:
+        """
+        Yield the raw AudioBook items of a library.
+
+        Raw JSON on purpose: aiojellyfin's typed decoders lose People and Chapters.
+
+        :param library_id: Id of the Jellyfin library.
+        """
+        offset = 0
+        while True:
+            page = await self._client._session.get_json(
+                "/Items",
+                params={
+                    "parentId": library_id,
+                    "includeItemTypes": ITEM_TYPE_AUDIOBOOK,
+                    "recursive": "true",
+                    "enableUserData": "true",
+                    "fields": ",".join(AUDIOBOOK_FIELDS),
+                    "limit": str(AUDIOBOOK_PAGE_SIZE),
+                    "startIndex": str(offset),
+                },
+            )
+            for book in page["Items"]:
+                yield book
+            offset += AUDIOBOOK_PAGE_SIZE
+            if offset >= page["TotalRecordCount"]:
+                return
+
+    async def _get_raw_audiobook(self, item_id: str) -> dict[str, Any]:
+        """
+        Return the raw item of an audiobook.
+
+        :param item_id: Id of the audiobook.
+        :raises MediaNotFoundError: If there is no such item, or it is not an audiobook.
+        """
+        try:
+            item = await self._client._session.get_json(
+                f"/Users/{self._client._user_id}/Items/{item_id}",
+                params={"fields": ",".join(AUDIOBOOK_FIELDS), "enableUserData": "true"},
+            )
+        except (NotFound, SessionNotFound) as err:
+            # aiojellyfin raises its session's NotFound here, which is a different class
+            raise MediaNotFoundError(f"Item {item_id} not found") from err
+        if item.get(ITEM_KEY_TYPE) != ITEM_TYPE_AUDIOBOOK:
+            raise MediaNotFoundError(f"Item {item_id} is not an audiobook")
+        return item
+
+    async def _get_book_libraries(self) -> list[JellyMediaLibrary]:
+        """Return all books libraries the user has access to."""
+        response = await self._client.get_media_folders()
+        return [
+            library
+            for library in response["Items"]
+            if library.get(ITEM_KEY_COLLECTION_TYPE) == COLLECTION_TYPE_BOOKS
+        ]
 
 
 def _normalize_jellyfin_media_url(url: str) -> str:
