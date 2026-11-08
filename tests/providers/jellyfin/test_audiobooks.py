@@ -679,3 +679,93 @@ async def test_library_sync_leaves_the_playlog_to_the_poll(
     fixture_builder.objects[BOOK_ID]["UserData"]["PlaybackPositionTicks"] = 50_000_000_000
     await _provider(mass, jellyfin_books_provider).sync_library(MediaType.AUDIOBOOK)
     assert await mass.music.in_progress_items(all_users=True) == []
+
+
+@pytest.fixture
+async def second_account(
+    mass: MusicAssistant,
+    jellyfin_books_provider: ProviderConfig,
+    fixture_builder: FixtureBuilder,
+) -> JellyfinProvider:
+    """Add a second Jellyfin account, as each person in a household has their own."""
+    authenticate_by_name = _with_books_folder(fixture_builder.to_authenticate_by_name())
+    with mock.patch(
+        "music_assistant.providers.jellyfin.authenticate_by_name", authenticate_by_name
+    ):
+        config = await mass.config._create_provider_instance(
+            "jellyfin",
+            {},
+            setup_data=mass.config._encrypt_values(
+                {"url": "http://localhost", "username": "other", "password": "password"}
+            ),
+        )
+        provider = _provider(mass, config)
+        assert provider.instance_id != jellyfin_books_provider.instance_id
+        return provider
+
+
+async def _report(provider: JellyfinProvider, position: int, is_playing: bool = True) -> int:
+    """Report progress on one account and return how many writes reached Jellyfin."""
+    with mock.patch.object(provider, "_post_user_data", mock.AsyncMock()) as post:
+        await provider.on_played(
+            media_type=MediaType.AUDIOBOOK,
+            prov_item_id=BOOK_ID,
+            fully_played=False,
+            position=position,
+            media_item=mock.Mock(),
+            is_playing=is_playing,
+        )
+    return post.await_count
+
+
+async def test_only_the_account_that_started_playback_saves(
+    mass: MusicAssistant,
+    jellyfin_books_provider: ProviderConfig,
+    second_account: JellyfinProvider,
+) -> None:
+    """A play with no known person reaches both accounts: only one may save it."""
+    first = _provider(mass, jellyfin_books_provider)
+    await first.get_resume_position(BOOK_ID, MediaType.AUDIOBOOK)
+    assert await _report(second_account, 4000) == 0
+    assert await _report(first, 4000) == 1
+
+
+async def test_playback_moves_to_the_other_account(
+    mass: MusicAssistant,
+    jellyfin_books_provider: ProviderConfig,
+    second_account: JellyfinProvider,
+) -> None:
+    """When the other person starts the book, their account saves from then on."""
+    first = _provider(mass, jellyfin_books_provider)
+    await first.get_resume_position(BOOK_ID, MediaType.AUDIOBOOK)
+    await second_account.get_resume_position(BOOK_ID, MediaType.AUDIOBOOK)
+    assert await _report(first, 4000) == 0
+    assert await _report(second_account, 4000) == 1
+
+
+async def test_playback_owner_survives_reload(
+    mass: MusicAssistant,
+    jellyfin_books_provider: ProviderConfig,
+    second_account: JellyfinProvider,
+) -> None:
+    """A parked queue resumed after a restart must still save to the right account only."""
+    await second_account.get_resume_position(BOOK_ID, MediaType.AUDIOBOOK)
+    await mass.config._reload_provider(jellyfin_books_provider.instance_id)
+    assert await _report(_provider(mass, jellyfin_books_provider), 4000) == 0
+
+
+async def test_marking_unplayed_is_not_blocked_by_the_other_account(
+    mass: MusicAssistant,
+    jellyfin_books_provider: ProviderConfig,
+    second_account: JellyfinProvider,
+) -> None:
+    """Marking a book unplayed is a person's explicit choice, not a playback report."""
+    await _provider(mass, jellyfin_books_provider).get_resume_position(BOOK_ID, MediaType.AUDIOBOOK)
+    assert await _report(second_account, 0, is_playing=False) == 1
+
+
+async def test_a_single_account_saves_without_having_started_playback(
+    mass: MusicAssistant, jellyfin_books_provider: ProviderConfig
+) -> None:
+    """With nobody recorded as playing, a lone account behaves as before."""
+    assert await _report(_provider(mass, jellyfin_books_provider), 4000) == 1

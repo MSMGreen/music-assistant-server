@@ -53,10 +53,12 @@ from .const import (
     AUDIOBOOK_PROGRESS_POLL_SECONDS,
     CACHE_EXPIRATION_SEEN_PROGRESS,
     CACHE_KEY_KNOWN_TICKS,
+    CACHE_KEY_PLAYBACK_OWNER,
     CACHE_KEY_SEEN_PROGRESS,
     COLLECTION_TYPE_BOOKS,
     COLLECTION_TYPE_MUSIC,
     COLLECTION_TYPE_PLAYLISTS,
+    DOMAIN,
     ITEM_KEY_COLLECTION_TYPE,
     ITEM_KEY_ID,
     ITEM_KEY_MEDIA_STREAMS,
@@ -244,6 +246,7 @@ class JellyfinProvider(MusicProvider):
         ticks = int(user_data.get(USER_DATA_KEY_POSITION_TICKS) or 0)
         played = bool(user_data.get(USER_DATA_KEY_PLAYED, False))
         await self._remember_known_ticks(item_id, ticks)
+        await self._set_playback_owner(item_id)
         # Jellyfin holds the one shared place in a book, which other clients move too, mostly
         # without recording when. Without a newer timestamp Music Assistant takes the higher of
         # its own position and this one, which would ignore a rewind in another app, so a position
@@ -279,6 +282,11 @@ class JellyfinProvider(MusicProvider):
         marked_unplayed = not fully_played and not position and not is_playing
         if not finished and not marked_unplayed and not position:
             # a zero position during playback means nothing, and would wipe the shared place
+            return
+        # A play with no known person is reported to every account the book is on, but only
+        # one was asked for the resume point. Saving it to the others would overwrite their place
+        if not marked_unplayed and not await self._owns_playback(prov_item_id):
+            self.logger.debug("Not writing %s: another account is playing it", prov_item_id)
             return
         ticks = 0 if finished or marked_unplayed else int(position * TICKS_PER_SECOND)
         try:
@@ -716,6 +724,19 @@ class JellyfinProvider(MusicProvider):
             provider=self.instance_id,
             persistent=True,
         )
+
+    async def _set_playback_owner(self, item_id: str) -> None:
+        await self.mass.cache.set(
+            f"{CACHE_KEY_PLAYBACK_OWNER}.{item_id}",
+            self.instance_id,
+            expiration=CACHE_EXPIRATION_SEEN_PROGRESS,
+            provider=DOMAIN,
+            persistent=True,
+        )
+
+    async def _owns_playback(self, item_id: str) -> bool:
+        owner = await self.mass.cache.get(f"{CACHE_KEY_PLAYBACK_OWNER}.{item_id}", provider=DOMAIN)
+        return owner in (None, self.instance_id)
 
     async def _remember_known_ticks(self, item_id: str, ticks: int) -> None:
         self._known_ticks[item_id] = ticks
